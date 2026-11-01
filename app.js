@@ -1185,14 +1185,48 @@ async function rain(opened){
   }finally{ rainBusy = false; $(btn).removeAttribute('aria-busy'); }
 }
 $('#rainBtn').onclick = () => rain(false);
-// 라이트닝: 창은 누른 그 순간에 연다(팝업 차단을 피하려고). 같은 이름의 창이 있으면 그 창을 쓴다. 보내기는 그동안 이어서 한다
-const LT_URL = ((window.WONGO_CONFIG || {}).lightningUrl || '').trim();
-$('#ltOpenBtn').onclick = () => {
-  if(!LT_URL){ toast('라이트닝 페이지 주소가 설정되어 있지 않습니다(config.js의 lightningUrl).', 7000); return; }
+/* ---------- 라이트닝: 지금 원고를 보내고 claude.ai의 내 라이트닝 페이지를 연다 ----------
+   라이트닝 페이지는 사람마다(claude.ai 계정마다) 따로 있어서, 주소는 기기마다 처음 한 번 넣어 이 기기에 둔다.
+   창은 누른 그 순간에 연다(팝업 차단을 피하려고). 같은 이름의 창이 있으면 그 창을 쓴다. 보내기는 그동안 이어서 한다 */
+const ltUrl = () => lsGet('lt-url', '');
+function normLtUrl(v){
+  v = String(v || '').trim().replace(/^<|>$/g, '');
+  if(!v) return '';
+  if(!/^https?:\/\//i.test(v)) v = 'https://' + v;
+  let u; try{ u = new URL(v); }catch(e){ return null; }
+  if(u.protocol !== 'https:' || !/(^|\.)claude\.ai$/i.test(u.hostname) || !/\/artifact\/[A-Za-z0-9_-]+/.test(u.pathname)) return null;
+  return u.origin + u.pathname;
+}
+function openLightning(){
+  const url = ltUrl();
+  if(!url){ ltAddr(true); return; }
   if(navigator.onLine === false){ toast('인터넷에 연결된 뒤 라이트닝 페이지를 열 수 있습니다.', 6000); return; }
-  window.open(LT_URL, 'mywongo-lightning');
+  window.open(url, 'mywongo-lightning');
   rain(true);
+}
+let ltAddrThenOpen = false;
+function ltAddr(thenOpen){
+  ltAddrThenOpen = !!thenOpen;
+  $('#ltAddrIn').value = ltUrl();
+  $('#ltAddrSave').textContent = thenOpen ? '저장하고 열기' : '저장';
+  const m = $('#ltAddrMsg'); m.classList.remove('err'); m.textContent = '이 기기에만 저장합니다. 컴퓨터·휴대폰·태블릿마다 한 번씩 넣어 주세요.';
+  $('#ltAddrDlg').hidden = false;
+  setTimeout(() => $('#ltAddrIn').focus(), 0);
+}
+const ltAddrClose = () => { $('#ltAddrDlg').hidden = true; };
+$('#ltAddrBox').onsubmit = e => {
+  e.preventDefault();
+  const raw = $('#ltAddrIn').value, url = normLtUrl(raw), m = $('#ltAddrMsg');
+  if(url === ''){ lsDel('lt-url'); ltAddrClose(); toast('라이트닝 주소를 지웠습니다.', 4000); return; }
+  if(!url){ m.classList.add('err'); m.textContent = 'claude.ai의 라이트닝 페이지 주소가 아닙니다. 주소는 https://claude.ai/artifact/… 꼴입니다.'; return; }
+  lsSet('lt-url', url); ltAddrClose();
+  if(ltAddrThenOpen) openLightning(); else toast('라이트닝 주소를 저장했습니다.', 4000);
 };
+$('#ltAddrClose').onclick = ltAddrClose;
+$('#ltAddrDlg').addEventListener('click', e => { if(e.target === $('#ltAddrDlg')) ltAddrClose(); });
+$('#ltAddrDlg').addEventListener('keydown', e => { if(e.key === 'Escape'){ e.stopPropagation(); ltAddrClose(); } });
+$('#ltAddrBtn').onclick = () => { if(narrow()) drawer(false); ltAddr(false); };
+$('#ltOpenBtn').onclick = openLightning;
 
 /* ---------- 말풍선: 아이콘에 마우스를 올리면 이름과 하는 일을 보여 준다 ----------
    title로 적어 둔 이름은 말풍선으로 옮긴다(브라우저 기본 말풍선과 겹치지 않게). 휴대폰에서는 뜨지 않는다. */
