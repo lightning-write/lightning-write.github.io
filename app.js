@@ -89,6 +89,7 @@ function stats(){
   $('#sNoSp').textContent = t.replace(/\s/g, '').length.toLocaleString();
   $('#sPages').textContent = (chars / 200).toFixed(1);
   paper.classList.toggle('blank', t.trim() === '');
+  document.dispatchEvent(new Event('wongo:stats'));
 }
 const chapRe = /^(제\s*\d+\s*[장화부막편]|\d+\s*[.)]\s|#\s)/;
 let olTimer;
@@ -162,6 +163,7 @@ function setContent(html, title){
   paper.innerHTML = html && html.trim() ? html : '<div><br></div>';
   $('#title').value = title && title !== '제목 없는 원고' ? title : '';
   stats(); outline();
+  document.dispatchEvent(new Event('wongo:open'));
 }
 async function openMs(id){
   if(cur && cur.id === id){ if(narrow()) drawer(false); return; }
@@ -425,6 +427,10 @@ paper.addEventListener('input', e => {
       if(!pr.innerText.trim()) pr.classList.remove('chap'); else b.classList.remove('chap');
     }
   }
+  // 라이트닝 페이지에서 번개로 나온 문장(점선 밑줄)은 작가가 고쳐 쓰면 밑줄이 사라진다
+  const sel = getSelection(), an = sel.rangeCount && sel.anchorNode, el = an && (an.nodeType === 1 ? an : an.parentNode);
+  const sp = el && el.closest && el.closest('.lt-new');
+  if(sp && paper.contains(sp)){ sp.classList.remove('lt-new'); if(!sp.className) sp.removeAttribute('class'); }
   onEdit();
 });
 paper.addEventListener('paste', e => {
@@ -858,9 +864,9 @@ const Drive = (() => {
         const d = typeof raw === 'string' ? JSON.parse(raw) : raw;
         let outcome = null;
         await DB.update(id, r => {
-          if(!r){ outcome = 'added'; return {id, title: d.title || '', html: d.html || '', chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, dirty: false, fileId: f.id, rev: f.version}; }
+          if(!r){ outcome = 'added'; return {id, title: d.title || '', html: d.html || '', chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, sentLt: d.sentLt || null, dirty: false, fileId: f.id, rev: f.version}; }
           if(r.deleted) return undefined;
-          if(!r.dirty){ outcome = 'updated'; return Object.assign({}, r, {title: d.title, html: d.html, chars: d.chars, updatedAt: d.updatedAt, trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, dirty: false, fileId: f.id, rev: f.version}); }
+          if(!r.dirty){ outcome = 'updated'; return Object.assign({}, r, {title: d.title, html: d.html, chars: d.chars, updatedAt: d.updatedAt, trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, sentLt: d.sentLt || null, dirty: false, fileId: f.id, rev: f.version}); }
           if(r.html === d.html && r.title === d.title && !!r.trashed === !!d.trashed){ const lt = mergeLt(r.lt, d.lt); return Object.assign({}, r, {lt, dirty: JSON.stringify(lt) !== JSON.stringify(d.lt || null), fileId: f.id, rev: f.version}); }
           outcome = 'conflict'; return Object.assign({}, r, {fileId: f.id, rev: f.version});
         });
@@ -883,8 +889,8 @@ const Drive = (() => {
       for(const l of await DB.all()){
         if(l.deleted || !l.dirty) continue;
         if(!l.fileId && isBlank(l)) continue;  // 아무것도 쓰지 않은 새 원고는 올리지 않음
-        const body = JSON.stringify({app: 'wongo', v: 1, id: l.id, title: l.title, html: l.html, chars: l.chars, updatedAt: l.updatedAt, trashed: !!l.trashed, trashedAt: l.trashedAt || null, lt: l.lt || null});
-        const create = {name: safeName(l.title) + '.json', parents: [data], mimeType: 'application/json', appProperties: {kind: 'ms', wpId: l.id}};
+        const body = JSON.stringify({app: 'wongo', v: 1, id: l.id, title: l.title, html: l.html, chars: l.chars, updatedAt: l.updatedAt, trashed: !!l.trashed, trashedAt: l.trashedAt || null, lt: l.lt || null, sentLt: l.sentLt || null});
+        const create = {name: safeName(l.title).replace(/[\[\]]/g, ' ') + ' [' + l.id + '].json', parents: [data], mimeType: 'application/json', appProperties: {kind: 'ms', wpId: l.id}};
         let res;
         if(l.fileId){
           try{ res = await upload(l.fileId, {name: create.name}, body, 'application/json'); }
@@ -1142,6 +1148,7 @@ const Drive = (() => {
 
   return {
     enabled: () => !!CID && wanted && tokenOk(),
+    state: () => st,
     start(){
       render();
       if(CID && navigator.onLine !== false) loadGis().catch(() => {});  // 로그인 창이 막히지 않도록 미리 불러 둠
@@ -1150,6 +1157,58 @@ const Drive = (() => {
     },
     soon, sync, saveHwpx, errorText, render, receive
   };
+})();
+
+/* ---------- raining: 이 원고를 라이트닝 페이지로 보낸다 ----------
+   지금 바로 드라이브에 올리고 '보냄' 표시를 남긴다. 라이트닝 페이지는 이 원고를 열거나 그 페이지로 돌아올 때 이 판을 받는다.
+   최종본은 라이트닝 페이지에서 다듬고, 앱은 '라이트닝에서 받기'로 그것을 받아 본다. */
+let raining = false;
+$('#rainBtn').onclick = async () => {
+  if(!cur || raining) return;
+  if(!Drive.enabled()){
+    toast(navigator.onLine === false ? '인터넷에 연결된 뒤 보낼 수 있습니다.' : '구글 드라이브에 연결해야 라이트닝 페이지로 보낼 수 있습니다. 원고 목록 아래에서 드라이브를 연결해 주세요.', 7000);
+    if(narrow()) drawer(true);
+    return;
+  }
+  raining = true; $('#rainBtn').setAttribute('aria-busy', 'true');
+  try{
+    await flush();
+    await DB.update(cur.id, r => r ? Object.assign({}, r, {sentLt: Date.now(), dirty: true}) : undefined);
+    await Drive.sync();
+    const st = Drive.state();
+    if(st === 'ok') toast('「' + titleVal() + '」을(를) 라이트닝 페이지로 보냈습니다. 라이트닝 페이지를 열면 이 판을 받아 이어서 작업합니다.', 7000);
+    else toast(st === 'expired' ? '드라이브 연결이 만료되었습니다. 다시 연결한 뒤 raining을 눌러 주세요.' : '보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.', 7000);
+  }finally{ raining = false; $('#rainBtn').removeAttribute('aria-busy'); }
+};
+
+/* ---------- 말풍선: 아이콘에 마우스를 올리면 이름과 하는 일을 보여 준다 ----------
+   title로 적어 둔 이름은 말풍선으로 옮긴다(브라우저 기본 말풍선과 겹치지 않게). 휴대폰에서는 뜨지 않는다. */
+(function tips(){
+  document.querySelectorAll('#bar [title], #side [title], #fab[title]').forEach(el => { if(!el.dataset.tip){ el.dataset.tip = el.title; } el.removeAttribute('title'); });
+  const tip = document.createElement('div'); tip.id = 'tip'; tip.hidden = true; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip);
+  let timer = null, on = null;
+  const show = el => {
+    tip.textContent = '';
+    const b = document.createElement('b'); b.textContent = el.dataset.tip; tip.appendChild(b);
+    if(el.dataset.tipD){ const d = document.createElement('span'); d.textContent = el.dataset.tipD; tip.appendChild(d); }
+    tip.hidden = false;
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    let top = r.bottom + 8; if(top + h > innerHeight - 8) top = r.top - h - 8;
+    tip.style.top = Math.round(top) + 'px'; tip.style.left = Math.round(Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8))) + 'px';
+  };
+  const hide = () => { clearTimeout(timer); tip.hidden = true; on = null; };
+  document.addEventListener('pointerover', e => {
+    if(e.pointerType && e.pointerType !== 'mouse') return;
+    const el = e.target.closest && e.target.closest('[data-tip]');
+    if(el === on) return;
+    hide(); if(!el) return;
+    on = el; timer = setTimeout(() => show(el), 350);
+  });
+  document.addEventListener('pointerdown', hide, true);
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') hide(); }, true);
+  document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if(el && el.matches(':focus-visible')){ on = el; show(el); } });
+  document.addEventListener('focusout', e => { if(on && e.target === on) hide(); });  // 다른 곳(닫힌 창의 단추)에서 빠진 포커스는 상관하지 않는다
+  addEventListener('scroll', hide, true);
 })();
 
 /* ---------- 오프라인 실행 · 앱 설치 ---------- */
