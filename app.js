@@ -12,6 +12,20 @@ const LS = 'wongo-';
 function lsGet(k, d){ try{ const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } }
 function lsSet(k, v){ try{ localStorage.setItem(LS + k, JSON.stringify(v)); }catch(e){} }
 function lsDel(k){ try{ localStorage.removeItem(LS + k); }catch(e){} }
+/* 옛 주소(zax-zac.github.io/Wongo)에서 옮겨 올 때: 주소 끝 #move=… 에 실려 온 그 기기의 설정을 받는다
+   (라이트닝 주소, 서식, 라이트닝에서 이미 받은 파일 표시). 이 기기에 이미 있는 값은 덮지 않는다 */
+const moved = (() => {
+  const m = location.hash.match(/^#move=([A-Za-z0-9_-]+)/);
+  if(!m) return false;
+  try{
+    const j = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
+    if(j.lt && !lsGet('lt-url', '')) lsSet('lt-url', String(j.lt));
+    if(j.prefs && typeof j.prefs === 'object' && lsGet('prefs', null) == null) lsSet('prefs', j.prefs);
+    if(j.seen && typeof j.seen === 'object') lsSet('lt-seen', Object.assign({}, j.seen, lsGet('lt-seen', {})));
+  }catch(e){}
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+  return true;
+})();
 const prefs = Object.assign({font: $('#font').options[0].value, fs: 16, lh: 1.9, indent: true, focus: false, side: true, ls: 0, wrap: 'char'}, lsGet('prefs', {}));
 prefs.ls = 0; prefs.wrap = 'char';  // 자간 0, 글자 단위 줄 나눔으로 고정
 const savePrefs = () => lsSet('prefs', prefs);
@@ -864,9 +878,9 @@ const Drive = (() => {
         const d = typeof raw === 'string' ? JSON.parse(raw) : raw;
         let outcome = null;
         await DB.update(id, r => {
-          if(!r){ outcome = 'added'; return {id, title: d.title || '', html: d.html || '', chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, sentLt: d.sentLt || null, dirty: false, fileId: f.id, rev: f.version}; }
+          if(!r){ outcome = 'added'; return {id, title: d.title || '', html: d.html || '', chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, sentLt: d.sentLt || null, ltGot: d.ltGot || null, dirty: false, fileId: f.id, rev: f.version}; }
           if(r.deleted) return undefined;
-          if(!r.dirty){ outcome = 'updated'; return Object.assign({}, r, {title: d.title, html: d.html, chars: d.chars, updatedAt: d.updatedAt, trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, sentLt: d.sentLt || null, dirty: false, fileId: f.id, rev: f.version}); }
+          if(!r.dirty){ outcome = 'updated'; return Object.assign({}, r, {title: d.title, html: d.html, chars: d.chars, updatedAt: d.updatedAt, trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, sentLt: d.sentLt || null, ltGot: Math.max(r.ltGot || 0, d.ltGot || 0) || null, dirty: false, fileId: f.id, rev: f.version}); }
           if(r.html === d.html && r.title === d.title && !!r.trashed === !!d.trashed){ const lt = mergeLt(r.lt, d.lt); return Object.assign({}, r, {lt, dirty: JSON.stringify(lt) !== JSON.stringify(d.lt || null), fileId: f.id, rev: f.version}); }
           outcome = 'conflict'; return Object.assign({}, r, {fileId: f.id, rev: f.version});
         });
@@ -889,7 +903,7 @@ const Drive = (() => {
       for(const l of await DB.all()){
         if(l.deleted || !l.dirty) continue;
         if(!l.fileId && isBlank(l)) continue;  // 아무것도 쓰지 않은 새 원고는 올리지 않음
-        const body = JSON.stringify({app: 'wongo', v: 1, id: l.id, title: l.title, html: l.html, chars: l.chars, updatedAt: l.updatedAt, trashed: !!l.trashed, trashedAt: l.trashedAt || null, lt: l.lt || null, sentLt: l.sentLt || null});
+        const body = JSON.stringify({app: 'wongo', v: 1, id: l.id, title: l.title, html: l.html, chars: l.chars, updatedAt: l.updatedAt, trashed: !!l.trashed, trashedAt: l.trashedAt || null, lt: l.lt || null, sentLt: l.sentLt || null, ltGot: l.ltGot || null});
         const create = {name: safeName(l.title).replace(/[\[\]]/g, ' ') + ' [' + l.id + '].json', parents: [data], mimeType: 'application/json', appProperties: {kind: 'ms', wpId: l.id}};
         let res;
         if(l.fileId){
@@ -1060,15 +1074,20 @@ const Drive = (() => {
         const fields = {title, html: d.html, chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: false, trashedAt: null};
         const chain = Array.isArray(d.chain) ? d.chain : [];
         let outcome = null, gotId = d.id;
+        // ltGot = 이 원고가 라이트닝에서 마지막으로 받은 판의 시각. 드라이브로 다른 기기에도 따라가서, 이미 받은 판을 다시 받지 않는다
+        const got1 = d.updatedAt || 0;
         await DB.update(d.id, r => {
-          if(!r){ outcome = 'added'; return Object.assign({id: d.id, lt: d.lt || null, dirty: true, fileId: null, rev: null}, fields); }
+          if(!r){ outcome = 'added'; return Object.assign({id: d.id, lt: d.lt || null, dirty: true, fileId: null, rev: null, ltGot: got1}, fields); }
           if(r.deleted){ outcome = 'copy'; return undefined; }
+          if(r.ltGot && got1 <= r.ltGot){ outcome = 'same'; return undefined; }
           if(r.html === d.html && r.title === title && !r.trashed){
             outcome = 'same';
             const lt = mergeLt(d.lt, r.lt);
-            return JSON.stringify(lt) === JSON.stringify(r.lt || null) ? undefined : Object.assign({}, r, {lt, dirty: true});
+            const g = Math.max(r.ltGot || 0, got1), ltSame = JSON.stringify(lt) === JSON.stringify(r.lt || null);
+            if(ltSame && g === r.ltGot) return undefined;
+            return Object.assign({}, r, {lt, ltGot: g}, ltSame ? {} : {dirty: true});   // 받은 판 표시만 바뀌면 올리지 않고, 다음에 올릴 때 함께 간다
           }
-          if((r.updatedAt || 0) <= (d.base || 0) || chain.includes(r.updatedAt)){ outcome = 'updated'; return Object.assign({}, r, fields, {lt: d.lt || r.lt || null, dirty: true}); }
+          if((r.updatedAt || 0) <= (d.base || 0) || chain.includes(r.updatedAt)){ outcome = 'updated'; return Object.assign({}, r, fields, {lt: d.lt || r.lt || null, ltGot: got1, dirty: true}); }
           outcome = 'copy'; return undefined;
         });
         if(outcome === 'added'){ ch.added.add(d.id); got.push(title); }
@@ -1289,5 +1308,6 @@ window.__wongo = {paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, 
   paper.contentEditable = 'true';
   setSave('saved', '');
   Drive.start();
+  if(moved && !Drive.enabled()) notice('새 주소로 옮겨 왔습니다. 원고 목록 아래 「드라이브 연결」을 누르면 드라이브의 원고가 이 주소로 내려옵니다.');
 })();
 })();

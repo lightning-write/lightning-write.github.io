@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>라이트닝 · MYWONGO</title>
+<meta name="theme-color" content="#2c4a6e">
+<link rel="icon" href="../icon-192.png">
+<style>
+/* 이 주소(…/lightning)를 열면 이 기기에 저장한 내 라이트닝 페이지(claude.ai)로 넘어간다.
+   주소는 앱과 같은 곳(localStorage 'wongo-lt-url')에 둔다. 앱의 번개 단추와 같은 주소를 쓴다. */
+:root{--paper:#fbfaf7;--ink:#1f2328;--muted:#6b6f76;--line:#dcd9d2;--accent:#2c4a6e;--accent-ink:#fff;--err:#b3261e}
+@media (prefers-color-scheme:dark){:root{--paper:#1b1d21;--ink:#e6e4df;--muted:#9a9ea6;--line:#34373d;--accent:#8fb0d9;--accent-ink:#11161d;--err:#f2b8b5}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif}
+main{max-width:460px;margin:0 auto;padding:max(48px,env(safe-area-inset-top)) 16px 40px}
+h1{font-size:20px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+h1 svg{width:22px;height:22px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linejoin:round}
+p{margin:8px 0}
+.muted{color:var(--muted);font-size:14px}
+input{width:100%;padding:10px 12px;margin:10px 0 4px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:15px}
+input:focus{outline:2px solid var(--accent);outline-offset:1px}
+button{font:inherit;font-size:15px;padding:9px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px}
+a{color:inherit}
+#msg.err{color:var(--err)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>라이트닝</h1>
+  <section id="going" hidden>
+    <p>내 라이트닝 페이지로 가는 중입니다…</p>
+    <p class="muted">넘어가지 않으면 <a id="goLink" href="#">여기</a>를 누르세요. 주소를 바꾸려면 <a href="?change">주소 바꾸기</a>.</p>
+  </section>
+  <form id="form" hidden novalidate>
+    <p>claude.ai에서 <b>내 계정의</b> 라이트닝 페이지를 열고, 주소창의 주소를 복사해 붙여 넣으세요.</p>
+    <input id="addr" type="url" inputmode="url" placeholder="https://claude.ai/artifact/…" autocomplete="off" spellcheck="false" aria-label="라이트닝 페이지 주소">
+    <p id="msg" class="muted" aria-live="polite">이 기기(이 브라우저)에 저장하고, 다음부터는 이 주소를 열면 바로 넘어갑니다. 앱의 번개 단추도 같은 주소를 씁니다.</p>
+    <div class="row">
+      <a href="../">앱으로 가기</a>
+      <button type="submit">저장하고 열기</button>
+    </div>
+    <p class="muted" style="margin-top:22px">라이트닝 페이지가 아직 없으면: <a href="https://github.com/lightning-write/lightning-write.github.io/tree/main/lightning-page" target="_blank" rel="noopener">내 라이트닝 페이지 만드는 법</a></p>
+  </form>
+</main>
+<script>
+(function(){
+  const KEY = 'wongo-lt-url';
+  const get = () => { try{ const v = localStorage.getItem(KEY); return v ? JSON.parse(v) : ''; }catch(e){ return ''; } };
+  const set = v => { try{ localStorage.setItem(KEY, JSON.stringify(v)); return true; }catch(e){ return false; } };
+  // 앱과 같은 규칙: claude.ai의 /artifact/ 주소만 받고, 앞뒤 공백·https 없음·? 뒤는 다듬는다
+  function norm(v){
+    v = String(v || '').trim().replace(/^<|>$/g, '');
+    if(!v) return null;
+    if(!/^https?:\/\//i.test(v)) v = 'https://' + v;
+    let u; try{ u = new URL(v); }catch(e){ return null; }
+    if(u.protocol !== 'https:' || !/(^|\.)claude\.ai$/i.test(u.hostname) || !/\/artifact\/[A-Za-z0-9_-]+/.test(u.pathname)) return null;
+    return u.origin + u.pathname;
+  }
+  const $ = s => document.querySelector(s);
+  const change = /[?&]change\b/.test(location.search);
+  const saved = norm(get());
+  if(saved && !change){
+    $('#going').hidden = false; $('#goLink').href = saved;
+    location.replace(saved);
+    return;
+  }
+  $('#form').hidden = false;
+  if(saved) $('#addr').value = saved;
+  $('#addr').focus();
+  $('#form').addEventListener('submit', e => {
+    e.preventDefault();
+    const url = norm($('#addr').value), m = $('#msg');
+    if(!url){ m.classList.add('err'); m.textContent = 'claude.ai의 라이트닝 페이지 주소가 아닙니다. 주소는 https://claude.ai/artifact/… 꼴입니다.'; return; }
+    set(url);
+    location.href = url;
+  });
+})();
+</script>
+</body>
+</html>

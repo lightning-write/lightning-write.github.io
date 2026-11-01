@@ -15,7 +15,11 @@
 - 위치 띠: 스토밍한 원고 위에 '지금 여기' 단계와 분량상 위치를 보여 줌
 - 아이콘에 마우스를 올리면 이름과 하는 일이 말풍선으로 뜸
 
-**주소**: https://zax-zac.github.io/Wongo/ (저장소 이름의 대소문자 그대로 `Wongo`)
+**주소**: https://lightning-write.github.io/
+
+**내 라이트닝 페이지로 바로 가기**: https://lightning-write.github.io/lightning (이 기기에 저장한 내 라이트닝 주소로 넘어갑니다. 처음 한 번은 주소를 넣습니다)
+
+예전 주소 https://zax-zac.github.io/Wongo/ 는 2026년 11월에 이 주소로 옮겼습니다.
 
 ---
 
@@ -89,7 +93,7 @@
 
 ## 라이트닝 페이지 (claude.ai)와 함께 쓰기
 
-원고를 쓰고 다듬는 일은 claude.ai의 라이트닝 페이지에서 하고, 이 앱은 그 원고를 받아 보고 고치는 곳입니다. 라이트닝 페이지는 사람마다 자기 claude.ai 계정에 하나씩 만들어 씁니다. 만드는 법과 페이지 파일은 [`lightning/`](lightning/) 폴더에 있습니다.
+원고를 쓰고 다듬는 일은 claude.ai의 라이트닝 페이지에서 하고, 이 앱은 그 원고를 받아 보고 고치는 곳입니다. 라이트닝 페이지는 사람마다 자기 claude.ai 계정에 하나씩 만들어 씁니다. 만드는 법과 페이지 파일은 [`lightning-page/`](lightning-page/) 폴더에 있습니다. 앱 주소 뒤에 `/lightning`을 붙인 https://lightning-write.github.io/lightning 을 열면 내 라이트닝 페이지로 바로 갑니다.
 원고는 구글 드라이브를 거쳐 오갑니다.
 
 ```
@@ -128,8 +132,8 @@
 자기 구글 계정과 claude.ai 계정이 있는 사람은 이 앱을 똑같이 쓸 수 있습니다. 원고는 각자의 구글 드라이브에, Claude 사용량은 각자의 claude.ai 계정에 따로 잡힙니다.
 
 1. **앱 주인**: 그 사람의 Gmail 주소를 구글 클라우드의 테스트 사용자에 더합니다(위 설정 4번, 최대 100명).
-2. **쓰는 사람**: 앱 주소(https://zax-zac.github.io/Wongo/)를 열고 드라이브를 자기 구글 계정으로 연결합니다. 원고는 그 사람 드라이브의 `MYWONGO` 폴더에 쌓입니다.
-3. **쓰는 사람**: [`lightning/`](lightning/) 폴더의 안내대로 자기 claude.ai 계정에 라이트닝 페이지를 만들고, claude.ai의 Google Drive 커넥터를 같은 구글 계정으로 연결합니다.
+2. **쓰는 사람**: 앱 주소(https://lightning-write.github.io/)를 열고 드라이브를 자기 구글 계정으로 연결합니다. 원고는 그 사람 드라이브의 `MYWONGO` 폴더에 쌓입니다.
+3. **쓰는 사람**: [`lightning-page/`](lightning-page/) 폴더의 안내대로 자기 claude.ai 계정에 라이트닝 페이지를 만들고, claude.ai의 Google Drive 커넥터를 같은 구글 계정으로 연결합니다.
 4. **쓰는 사람**: 앱의 번개를 처음 누를 때 자기 라이트닝 페이지 주소를 넣습니다.
 
 ## 파일 구성
@@ -142,6 +146,7 @@
 | `hangul.js` | HWP·HWPX 읽기, HWPX 만들기 |
 | `hwpx-template.js` | HWPX 뼈대 ([python-hwpx](https://github.com/airmang/python-hwpx)의 Skeleton.hwpx, Apache-2.0) |
 | `config.js` | 구글 클라이언트 ID |
-| `lightning/` | 라이트닝 페이지(claude.ai) 파일과 만드는 법 |
+| `lightning-page/` | 라이트닝 페이지(claude.ai) 파일과 만드는 법 |
+| `lightning/` | …/lightning 주소: 이 기기에 저장한 내 라이트닝 페이지로 넘겨줌 |
 | `sw.js` | 오프라인 실행. 앱 파일을 고치면 `VERSION`을 올려야 기기에 새 버전이 들어감 |
 | `KoPub_Batang_Light.ttf` | KoPub 바탕 Light (한국출판인회의 무료 서체, 원본 그대로 탑재) |

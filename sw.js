@@ -1,6 +1,6 @@
 /* 오프라인 실행: 앱 파일을 기기에 보관해 두고, 인터넷이 없어도 열리게 한다.
    앱 파일을 고치면 VERSION을 올려야 기기에 새 버전이 들어간다. */
-const VERSION = 'wongo-v17';
+const VERSION = 'wongo-v18';
 const FONTS = 'wongo-fonts';
 const SHELL = [
   './', 'index.html', 'app.js', 'storm-view.js', 'hangul.js', 'hwpx-template.js', 'config.js', 'manifest.webmanifest',
@@ -27,6 +27,8 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
 
   if(url.origin === self.location.origin){
+    // …/lightning 은 앱이 아니라 내 라이트닝 페이지로 넘겨주는 작은 페이지다. 늘 새로 받는다
+    if(/\/lightning(\/|\/index\.html)?$/.test(url.pathname) || /\/lightning-page\//.test(url.pathname)) return;
     if(req.mode === 'navigate'){
       e.respondWith(caches.match('index.html').then(r => r || fetch(req)));
       return;

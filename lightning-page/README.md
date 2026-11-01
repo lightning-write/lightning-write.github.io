@@ -6,7 +6,7 @@
 
 ## 준비
 
-1. **앱에서 드라이브 연결**: [MYWONGO](https://zax-zac.github.io/Wongo/)를 열고, 원고 목록 아래 **드라이브 연결**로 내 구글 계정을 연결합니다.
+1. **앱에서 드라이브 연결**: [MYWONGO](https://lightning-write.github.io/)를 열고, 원고 목록 아래 **드라이브 연결**로 내 구글 계정을 연결합니다.
    - 로그인이 막히면 앱 주인에게 내 Gmail 주소를 알려 주세요. 앱 주인이 구글 클라우드의 테스트 사용자에 넣어야 로그인됩니다(최대 100명).
 2. **claude.ai에 Google Drive 커넥터 연결**: claude.ai 설정의 커넥터에서 Google Drive를 연결합니다. 1번과 **같은 구글 계정**이어야 앱과 같은 원고를 봅니다.
 
@@ -14,7 +14,7 @@
 
 claude.ai에서 Claude에게 이렇게 부탁합니다.
 
-> github.com/zax-zac/Wongo 저장소의 `lightning/lightning-page.html`을 내 계정의 아티팩트로 올려 줘. 같은 폴더의 글꼴 `kopub-batang-light.woff`도 같은 이름으로 함께 올리고, 내용은 고치지 마. capabilities는 아래 그대로 해 줘.
+> github.com/lightning-write/lightning-write.github.io 저장소의 `lightning-page/lightning-page.html`을 내 계정의 아티팩트로 올려 줘. 같은 폴더의 글꼴 `kopub-batang-light.woff`도 같은 이름으로 함께 올리고, 내용은 고치지 마. capabilities는 아래 그대로 해 줘.
 
 ```json
 {
@@ -34,6 +34,8 @@ claude.ai에서 Claude에게 이렇게 부탁합니다.
    - 나중에 바꾸려면 원고 목록 아래 **라이트닝 주소**를 누릅니다.
 
 이제 앱의 번개를 누르면 지금 원고를 보내고 내 라이트닝 페이지가 열리며, 페이지가 그 원고를 바로 엽니다.
+
+앱 없이 바로 가려면 https://lightning-write.github.io/lightning 을 즐겨찾기에 넣어 두세요. 이 기기에 저장한 내 라이트닝 주소로 넘어갑니다(아이폰·아이패드는 홈 화면 앱과 사파리가 저장소를 따로 써서, 사파리에서 한 번 더 넣어야 할 수 있습니다).
 
 ## 원고는 어디에 있나
 
