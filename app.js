@@ -929,6 +929,8 @@ const Drive = (() => {
   /* ---- 드라이브에서 파일 열기: 드라이브 전체를 읽기 전용으로 훑어 HWP·HWPX·TXT·백업(.json)을 보여 준다 ---- */
   const READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
   let ro = null, pickFiles = null, pickBusy = false;
+  const savedRo = lsGet('ro', null);
+  if(savedRo && savedRo.exp > Date.now()) ro = savedRo;
   const roOk = () => !!ro && ro.exp > Date.now();
   const okExt = n => /\.(hwp|hwpx|txt|json)$/i.test(n || '');
   const dlg = $('#drvDlg'), dlgList = $('#drvList'), dlgMsg = $('#drvMsg'), dlgQ = $('#drvQ');
@@ -951,7 +953,7 @@ const Drive = (() => {
   async function roFetch(path){
     let r;
     try{ r = await fetch('https://www.googleapis.com' + path, {headers: {Authorization: 'Bearer ' + ro.token}}); }catch(e){ throw {code: 'network'}; }
-    if(r.status === 401){ ro = null; throw {code: 'auth'}; }
+    if(r.status === 401){ ro = null; lsDel('ro'); throw {code: 'auth'}; }
     if(!r.ok) throw {code: 'http', status: r.status};
     return r;
   }
@@ -980,13 +982,7 @@ const Drive = (() => {
   async function pick(){
     if(!CID){ toast('구글 드라이브 설정이 아직 되어 있지 않습니다.'); return; }
     if(navigator.onLine === false){ toast('인터넷에 연결된 뒤 드라이브에서 열 수 있습니다.'); return; }
-    if(!roOk()){
-      try{ ro = await requestToken(READ_SCOPE); }
-      catch(e){
-        toast(e.code === 'popup' ? '로그인 창이 막혔습니다. 팝업 차단을 풀고 다시 눌러 주세요.' : e.code === 'network' ? '인터넷에 연결되어 있지 않습니다.' : '드라이브를 읽을 권한을 받지 못했습니다. 설정 안내서의 \'드라이브 파일 읽기 권한\' 단계를 확인해 주세요.', 9000);
-        return;
-      }
-    }
+    if(!(await roAsk())) return;
     dlg.hidden = false; dlgQ.value = '';
     if(!pickFiles || !roOk()) loadPick(); else drawPick();
     if(!narrow()) dlgQ.focus();
@@ -998,6 +994,100 @@ const Drive = (() => {
   document.addEventListener('keydown', e => { if(e.key === 'Escape' && !dlg.hidden){ closePick(); e.stopPropagation(); } }, true);
   $('#opDrive').onclick = () => setTimeout(pick, 0);
   if(!CID) $('#opDrive').hidden = true;
+  /* 읽기 전용 권한: 한 시간 동안 이 기기에 기억해 두고, 그동안은 라이트닝 원고를 저절로 받는다 */
+  async function roAsk(){
+    if(roOk()) return true;
+    try{ ro = await requestToken(READ_SCOPE); lsSet('ro', ro); return true; }
+    catch(e){
+      toast(e.code === 'popup' ? '로그인 창이 막혔습니다. 팝업 차단을 풀고 다시 눌러 주세요.' : e.code === 'network' ? '인터넷에 연결되어 있지 않습니다.' : '드라이브를 읽을 권한을 받지 못했습니다. 설정 안내서의 \'드라이브 파일 읽기 권한\' 단계를 확인해 주세요.', 9000);
+      return false;
+    }
+  }
+
+  /* ---- 라이트닝에서 받기 ----
+     claude.ai의 라이트닝 페이지는 원고를 'MYWONGO/라이트닝 보낸 원고' 폴더에 원고마다 한 파일로 올린다.
+     그 파일의 base(라이트닝이 원고를 열 때의 앱 원고 시각)와 chain(라이트닝이 앞서 보낸 판들의 시각)으로
+     '앱이 그 뒤로 이 원고를 고쳤는지'를 가린다. 안 고쳤으면 내용을 바꾸고, 고쳤으면 「… (라이트닝 사본)」으로 따로 남긴다.
+     받은 원고는 평소처럼 드라이브 동기화로 다른 기기에도 간다. */
+  const LT_DIR = '라이트닝 보낸 원고';
+  let recvBusy = false;
+  async function roList(q, fields){
+    const out = []; let page = '';
+    for(let i = 0; i < 10; i++){
+      const r = await (await roFetch('/drive/v3/files?q=' + enc(q) + '&fields=' + enc('nextPageToken,files(' + fields + ')') + '&pageSize=200&spaces=drive' + (page ? '&pageToken=' + enc(page) : ''))).json();
+      out.push(...(r.files || [])); page = r.nextPageToken || ''; if(!page) break;
+    }
+    return out;
+  }
+  async function receive(auto){
+    if(recvBusy) return;
+    if(!CID){ if(!auto) toast('구글 드라이브 설정이 아직 되어 있지 않습니다.'); return; }
+    if(navigator.onLine === false){ if(!auto) toast('인터넷에 연결된 뒤 받을 수 있습니다.'); return; }
+    if(!roOk()){ if(auto || !(await roAsk())) return; }
+    recvBusy = true;
+    try{
+      const fq = "mimeType='application/vnd.google-apps.folder' and trashed=false and name=";
+      let dir = null;
+      for(const r of await roList(fq + "'" + ROOT + "'", 'id')){
+        const d = await roList(fq + "'" + LT_DIR + "' and '" + r.id + "' in parents", 'id');
+        if(d.length){ dir = d[0].id; break; }
+      }
+      if(!dir){ if(!auto) toast('라이트닝에서 보낸 원고가 아직 없습니다.', 4000); return; }
+      const seen = lsGet('lt-seen', {});
+      const files = (await roList("'" + dir + "' in parents and trashed=false", 'id,name,modifiedTime'))
+        .filter(f => seen[f.id] !== f.modifiedTime).sort((a, b) => a.modifiedTime < b.modifiedTime ? -1 : 1);
+      if(!files.length){ if(!auto) toast('새로 받을 원고가 없습니다.', 3000); return; }
+      await flush();
+      const ch = {updated: new Set(), removed: new Set(), added: new Set(), conflicts: []};
+      const got = [], copies = [];
+      for(const f of files){
+        let d = null;
+        try{ d = await (await roFetch('/drive/v3/files/' + f.id + '?alt=media')).json(); }
+        catch(e){ if(e && e.code) throw e; }
+        seen[f.id] = f.modifiedTime;
+        if(!d || d.app !== 'wongo' || !d.id || typeof d.html !== 'string') continue;
+        const title = d.title || '제목 없는 원고';
+        const fields = {title, html: d.html, chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: false, trashedAt: null};
+        const chain = Array.isArray(d.chain) ? d.chain : [];
+        let outcome = null, gotId = d.id;
+        await DB.update(d.id, r => {
+          if(!r){ outcome = 'added'; return Object.assign({id: d.id, lt: d.lt || null, dirty: true, fileId: null, rev: null}, fields); }
+          if(r.deleted){ outcome = 'copy'; return undefined; }
+          if(r.html === d.html && r.title === title && !r.trashed){
+            outcome = 'same';
+            const lt = mergeLt(d.lt, r.lt);
+            return JSON.stringify(lt) === JSON.stringify(r.lt || null) ? undefined : Object.assign({}, r, {lt, dirty: true});
+          }
+          if((r.updatedAt || 0) <= (d.base || 0) || chain.includes(r.updatedAt)){ outcome = 'updated'; return Object.assign({}, r, fields, {lt: d.lt || r.lt || null, dirty: true}); }
+          outcome = 'copy'; return undefined;
+        });
+        if(outcome === 'added'){ ch.added.add(d.id); got.push(title); }
+        else if(outcome === 'updated'){ ch.updated.add(d.id); got.push(title); }
+        else if(outcome === 'copy'){
+          gotId = newId();
+          await DB.put(Object.assign({id: gotId, lt: d.lt || null, dirty: true, fileId: null, rev: null}, fields, {title: title + ' (라이트닝 사본)'}));
+          ch.added.add(gotId); copies.push(title);
+        }
+        if(outcome !== 'same') ch.last = gotId;
+      }
+      lsSet('lt-seen', seen);
+      if(ch.added.size || ch.updated.size){
+        await onRemote(ch);
+        if(cur && ch.updated.has(cur.id)) setSave('saved', '라이트닝에서 받았습니다');
+        let msg = got.length ? '라이트닝에서 「' + got.join('」, 「') + '」을(를) 받았습니다.' : '';
+        if(copies.length) msg += (msg ? ' ' : '') + '「' + copies.join('」, 「') + '」은(는) 앱에서도 따로 고친 데가 있어서, 라이트닝 쪽 내용을 「… (라이트닝 사본)」으로 따로 남겼습니다.';
+        const target = ch.last;
+        if(target && (!cur || cur.id !== target)) notice(msg, '열기', () => { $('#notice').hidden = true; openMs(target); });
+        else notice(msg);
+        soon(800);
+      } else if(!auto) toast('새로 받을 원고가 없습니다.', 3000);
+    }catch(e){
+      if(!auto) toast(e.code === 'network' ? '인터넷에 연결되어 있지 않습니다.' : e.code === 'auth' ? '드라이브 읽기 권한이 만료되었습니다. 다시 눌러 주세요.' : '라이트닝 원고를 받지 못했습니다.', 6000);
+    }finally{ recvBusy = false; }
+  }
+  $('#opLt').onclick = () => setTimeout(() => receive(false), 0);
+  if(!CID) $('#opLt').hidden = true;
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && roOk()) receive(true); });
 
   function errorText(e){
     const c = e && e.code;
@@ -1043,7 +1133,7 @@ const Drive = (() => {
   };
   window.addEventListener('online', () => soon(300));
   window.addEventListener('offline', () => { if(wanted){ st = 'offline'; render(); } });
-  setInterval(() => { if(document.visibilityState === 'visible' && wanted && tokenOk()) sync(); }, 60000);
+  setInterval(() => { if(document.visibilityState === 'visible' && wanted && tokenOk()) sync(); if(document.visibilityState === 'visible' && roOk()) receive(true); }, 60000);
   setInterval(() => { if(wanted && st === 'ok' && !tokenOk()){ st = 'expired'; render(); } if(st === 'error') soon(0); }, 30000);
 
   return {
@@ -1052,8 +1142,9 @@ const Drive = (() => {
       render();
       if(CID && navigator.onLine !== false) loadGis().catch(() => {});  // 로그인 창이 막히지 않도록 미리 불러 둠
       if(CID && wanted) sync();
+      if(CID && roOk()) setTimeout(() => receive(true), 2000);
     },
-    soon, sync, saveHwpx, errorText, render
+    soon, sync, saveHwpx, errorText, render, receive
   };
 })();
 
