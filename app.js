@@ -1162,23 +1162,36 @@ const Drive = (() => {
 /* ---------- 레이닝: 이 원고를 라이트닝 페이지로 보낸다 ----------
    지금 바로 드라이브에 올리고 '보냄' 표시를 남긴다. 라이트닝 페이지는 이 원고를 열거나 그 페이지로 돌아올 때 이 판을 받는다.
    최종본은 라이트닝 페이지에서 다듬고, 앱은 '라이트닝에서 받기'로 그것을 받아 본다. */
+/* ---------- 레이닝: 지금 원고를 라이트닝 페이지로 보낸다 ----------
+   동기화 파일에 sentLt(보낸 때)를 붙여 올린다. 라이트닝 페이지는 앱이 가장 최근에 보낸 원고를 알아보고 연다. */
 let rainBusy = false;
-$('#rainBtn').onclick = async () => {
+async function rain(opened){
   if(!cur || rainBusy) return;
+  const btn = opened ? '#ltOpenBtn' : '#rainBtn';
   if(!Drive.enabled()){
-    toast(navigator.onLine === false ? '인터넷에 연결된 뒤 보낼 수 있습니다.' : '구글 드라이브에 연결해야 라이트닝 페이지로 보낼 수 있습니다. 원고 목록 아래에서 드라이브를 연결해 주세요.', 7000);
-    if(narrow()) drawer(true);
+    toast(navigator.onLine === false ? '인터넷에 연결된 뒤 보낼 수 있습니다.' + (opened ? ' 라이트닝 페이지만 열었습니다.' : '')
+      : '구글 드라이브에 연결해야 라이트닝 페이지로 보낼 수 있습니다. 원고 목록 아래에서 드라이브를 연결해 주세요.' + (opened ? ' 라이트닝 페이지만 열었습니다.' : ''), 8000);
+    if(narrow() && !opened) drawer(true);
     return;
   }
-  rainBusy = true; $('#rainBtn').setAttribute('aria-busy', 'true');
+  rainBusy = true; $(btn).setAttribute('aria-busy', 'true');
   try{
     await flush();
     await DB.update(cur.id, r => r ? Object.assign({}, r, {sentLt: Date.now(), dirty: true}) : undefined);
     await Drive.sync();
     const st = Drive.state();
-    if(st === 'ok') toast('「' + titleVal() + '」을(를) 라이트닝 페이지로 보냈습니다. 라이트닝 페이지를 열면 이 판을 받아 이어서 작업합니다.', 7000);
-    else toast(st === 'expired' ? '드라이브 연결이 만료되었습니다. 다시 연결한 뒤 레이닝을 눌러 주세요.' : '보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.', 7000);
-  }finally{ rainBusy = false; $('#rainBtn').removeAttribute('aria-busy'); }
+    if(st === 'ok') toast(opened ? '「' + titleVal() + '」을(를) 보냈습니다. 라이트닝 페이지가 이 원고를 엽니다.' : '「' + titleVal() + '」을(를) 라이트닝 페이지로 보냈습니다. 라이트닝 페이지를 열면 이 판을 받아 이어서 작업합니다.', 7000);
+    else toast(st === 'expired' ? '드라이브 연결이 만료되었습니다. 다시 연결한 뒤 ' + (opened ? '라이트닝' : '레이닝') + '을 눌러 주세요.' : '보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.', 8000);
+  }finally{ rainBusy = false; $(btn).removeAttribute('aria-busy'); }
+}
+$('#rainBtn').onclick = () => rain(false);
+// 라이트닝: 창은 누른 그 순간에 연다(팝업 차단을 피하려고). 같은 이름의 창이 있으면 그 창을 쓴다. 보내기는 그동안 이어서 한다
+const LT_URL = ((window.WONGO_CONFIG || {}).lightningUrl || '').trim();
+$('#ltOpenBtn').onclick = () => {
+  if(!LT_URL){ toast('라이트닝 페이지 주소가 설정되어 있지 않습니다(config.js의 lightningUrl).', 7000); return; }
+  if(navigator.onLine === false){ toast('인터넷에 연결된 뒤 라이트닝 페이지를 열 수 있습니다.', 6000); return; }
+  window.open(LT_URL, 'mywongo-lightning');
+  rain(true);
 };
 
 /* ---------- 말풍선: 아이콘에 마우스를 올리면 이름과 하는 일을 보여 준다 ----------
