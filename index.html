@@ -192,7 +192,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
   #saveState{display:none}
 }
 @media (prefers-reduced-motion:reduce){#side{transition:none}}
-/* ---------- 라이트닝 페이지와 잇기: 스토밍 보기 · raining · 위치 띠 ---------- */
+/* ---------- 라이트닝 페이지와 잇기: 스토밍 보기 · 레이닝 · 위치 띠 ---------- */
 .icon[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 #tip{position:fixed;z-index:80;max-width:260px;background:var(--ink);color:var(--paper);border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.22);pointer-events:none}
 #tip b{display:block;font-weight:600}
@@ -273,14 +273,14 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
       <input id="title" type="text" placeholder="제목 없는 원고" aria-label="원고 제목" autocomplete="off">
       <span id="saveState"></span>
       <div class="icons" id="tools">
-        <button id="rainBtn" class="icon" data-tip="raining" data-tip-d="이 원고를 라이트닝 페이지로 보냅니다. 라이트닝 페이지를 열면 이 판을 받아 이어서 작업합니다." aria-label="raining: 라이트닝 페이지로 보내기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 15.5a4 4 0 0 1-.7-7.94A5.5 5.5 0 0 1 16.9 7a3.75 3.75 0 0 1 .35 7.48"/><path d="M9 18l-1 2.5M13 17l-1 3.5M17 18l-1 2.5"/></svg></button>
-        <button id="stormBtn" class="icon" data-tip="스토밍" data-tip-d="라이트닝 페이지에서 세운 개요·인물·연표를 봅니다. 고치는 것은 라이트닝 페이지에서 합니다." aria-label="스토밍: 개요 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2 0 2.6-5 4.6-5s2.4 3 4.4 3 2.4-8 4.6-8S20 14 21 15"/><path d="M3 19h18"/></svg></button>
         <button data-cmd="undo" class="icon" title="되돌리기 (Ctrl+Z)" aria-label="되돌리기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
         <button data-cmd="redo" class="icon" title="다시하기 (Ctrl+Y)" aria-label="다시하기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
         <button id="fmtBtn" class="icon" data-pop="fmtPop" aria-haspopup="true" aria-expanded="false" title="서식 (글꼴·크기·줄간격·들여쓰기)" aria-label="서식"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5h16v2"/><path d="M12 5v14"/><path d="M9 19h6"/></svg></button>
         <button id="findBtn" class="icon" title="찾기·바꾸기 (Ctrl+F)" aria-label="찾기·바꾸기"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
         <button id="openBtn" class="icon" data-pop="openPop" aria-haspopup="true" aria-expanded="false" title="불러오기" aria-label="불러오기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
         <button id="exportBtn" class="icon" data-pop="exportMenu" aria-haspopup="true" aria-expanded="false" title="저장·내보내기" aria-label="저장·내보내기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg></button>
+        <button id="stormBtn" class="icon" data-tip="스토밍" data-tip-d="라이트닝 페이지에서 세운 개요·인물·연표를 봅니다. 고치는 것은 라이트닝 페이지에서 합니다." aria-label="스토밍: 개요 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2 0 2.6-5 4.6-5s2.4 3 4.4 3 2.4-8 4.6-8S20 14 21 15"/><path d="M3 19h18"/></svg></button>
+        <button id="rainBtn" class="icon" data-tip="레이닝" data-tip-d="이 원고를 라이트닝 페이지로 보냅니다. 라이트닝 페이지를 열면 이 판을 받아 이어서 작업합니다." aria-label="레이닝: 라이트닝 페이지로 보내기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 15.5a4 4 0 0 1-.7-7.94A5.5 5.5 0 0 1 16.9 7a3.75 3.75 0 0 1 .35 7.48"/><path d="M9 18l-1 2.5M13 17l-1 3.5M17 18l-1 2.5"/></svg></button>
       </div>
       <button id="hideBtn" class="icon" title="메뉴 접기 (Esc)" aria-label="메뉴 접기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
     </div>

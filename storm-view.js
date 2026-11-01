@@ -114,7 +114,7 @@ function renderPanel(openK){
   const body = $('#svBody'), tabs = $('#svTabs');
   if(!storm){
     tabs.innerHTML = '';
-    body.innerHTML = '<p class="hint sv-note">이 원고에는 아직 스토밍 개요가 없습니다. 라이트닝 페이지에서 스토밍한 뒤 raining 하면, 앱의 \'라이트닝에서 받기\'로 받아 여기서 볼 수 있습니다.</p>';
+    body.innerHTML = '<p class="hint sv-note">이 원고에는 아직 스토밍 개요가 없습니다. 라이트닝 페이지에서 스토밍한 뒤 레이닝 하면, 앱의 \'라이트닝에서 받기\'로 받아 여기서 볼 수 있습니다.</p>';
     return;
   }
   if(!storm.cast && view !== 'out') view = 'out';

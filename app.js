@@ -1159,26 +1159,26 @@ const Drive = (() => {
   };
 })();
 
-/* ---------- raining: 이 원고를 라이트닝 페이지로 보낸다 ----------
+/* ---------- 레이닝: 이 원고를 라이트닝 페이지로 보낸다 ----------
    지금 바로 드라이브에 올리고 '보냄' 표시를 남긴다. 라이트닝 페이지는 이 원고를 열거나 그 페이지로 돌아올 때 이 판을 받는다.
    최종본은 라이트닝 페이지에서 다듬고, 앱은 '라이트닝에서 받기'로 그것을 받아 본다. */
-let raining = false;
+let rainBusy = false;
 $('#rainBtn').onclick = async () => {
-  if(!cur || raining) return;
+  if(!cur || rainBusy) return;
   if(!Drive.enabled()){
     toast(navigator.onLine === false ? '인터넷에 연결된 뒤 보낼 수 있습니다.' : '구글 드라이브에 연결해야 라이트닝 페이지로 보낼 수 있습니다. 원고 목록 아래에서 드라이브를 연결해 주세요.', 7000);
     if(narrow()) drawer(true);
     return;
   }
-  raining = true; $('#rainBtn').setAttribute('aria-busy', 'true');
+  rainBusy = true; $('#rainBtn').setAttribute('aria-busy', 'true');
   try{
     await flush();
     await DB.update(cur.id, r => r ? Object.assign({}, r, {sentLt: Date.now(), dirty: true}) : undefined);
     await Drive.sync();
     const st = Drive.state();
     if(st === 'ok') toast('「' + titleVal() + '」을(를) 라이트닝 페이지로 보냈습니다. 라이트닝 페이지를 열면 이 판을 받아 이어서 작업합니다.', 7000);
-    else toast(st === 'expired' ? '드라이브 연결이 만료되었습니다. 다시 연결한 뒤 raining을 눌러 주세요.' : '보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.', 7000);
-  }finally{ raining = false; $('#rainBtn').removeAttribute('aria-busy'); }
+    else toast(st === 'expired' ? '드라이브 연결이 만료되었습니다. 다시 연결한 뒤 레이닝을 눌러 주세요.' : '보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.', 7000);
+  }finally{ rainBusy = false; $('#rainBtn').removeAttribute('aria-busy'); }
 };
 
 /* ---------- 말풍선: 아이콘에 마우스를 올리면 이름과 하는 일을 보여 준다 ----------
