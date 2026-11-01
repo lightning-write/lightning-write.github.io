@@ -290,14 +290,18 @@ async function removeMs(id){
 }
 
 const isBlank = r => !r.chars && (!r.title || r.title === '제목 없는 원고');
-/* 라이트닝 자료(조각·정리 위치)를 두 기기에서 따로 바꿨을 때: 조각은 합치고, 정리 위치는 이 기기 것을 쓴다 */
+/* 라이트닝 자료(조각·정리 위치·스토밍 개요)를 두 기기에서 따로 바꿨을 때:
+   조각은 합치고, 정리 위치는 이 기기 것을, 스토밍 개요는 더 나중에 고친 쪽을 쓴다. 모르는 칸도 버리지 않는다 */
 function mergeLt(a, b){
   if(!a) return b || null;
   if(!b) return a;
   const m = new Map();
   for(const f of b.frags || []) m.set(f.id, f);
   for(const f of a.frags || []) m.set(f.id, Object.assign({}, m.get(f.id) || {}, f));
-  return {frags: [...m.values()].sort((x, y) => (x.at || 0) - (y.at || 0)), mark: a.mark || b.mark || null};
+  const out = Object.assign({}, b, a, {frags: [...m.values()].sort((x, y) => (x.at || 0) - (y.at || 0)), mark: a.mark || b.mark || null});
+  const sa = a.storm, sb = b.storm;
+  if(sa || sb) out.storm = !sa ? sb : !sb ? sa : ((sa.at || 0) >= (sb.at || 0) ? sa : sb);
+  return out;
 }
 /* 드라이브에서 바뀐 내용이 들어왔을 때 */
 async function onRemote(ch){

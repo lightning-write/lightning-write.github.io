@@ -181,8 +181,9 @@ const MAX = 4000, CTX = 500, SESS_KEY = 'wongo-lt-sess', DAY = 86400000;
 const CLAUDE_URL = 'https://claude.ai/new';
 
 /* ---------- 원고별 라이트닝 자료 (기기에 저장, 드라이브로 함께 동기화) ----------
-   lt = {frags: [{id, t, k: [핵심어], at, src: 'note'|'memo', used}], mark: '마지막으로 정리한 문단의 글'} */
-const normLt = x => ({frags: x && Array.isArray(x.frags) ? x.frags.slice() : [], mark: (x && x.mark) || null});
+   lt = {frags: [{id, t, k: [핵심어], at, src: 'note'|'memo', used}], mark: '마지막으로 정리한 문단의 글', storm: 라이트닝 페이지의 스토밍 개요}
+   storm처럼 이 파일이 모르는 칸도 그대로 지켜서 저장한다 */
+const normLt = x => Object.assign({}, x || {}, {frags: x && Array.isArray(x.frags) ? x.frags.slice() : [], mark: (x && x.mark) || null});
 async function ltGet(){ const c = W.cur(); if(!c) return normLt(null); const r = await W.DB.get(c.id); return normLt(r && r.lt); }
 async function ltPut(fn){
   const c = W.cur(); if(!c) return null;
