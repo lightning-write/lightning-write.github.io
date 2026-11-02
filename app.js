@@ -1,4 +1,4 @@
-/* MYWONGO — 기기에 먼저 저장하고, 연결되면 구글 드라이브와 맞춘다 */
+/* 라이트닝 라이트(옛 이름 MYWONGO) — 기기에 먼저 저장하고, 연결되면 구글 드라이브와 맞춘다 */
 (() => {
 'use strict';
 const $ = s => document.querySelector(s);
@@ -499,7 +499,7 @@ const importErrors = {
   hwp_password: '암호가 걸린 한글 문서는 열 수 없습니다. 한글에서 암호를 풀고 다시 저장해 주세요',
   hwp_distribution: '배포용 문서는 열 수 없습니다. 한글에서 일반 문서로 저장해 주세요',
   hwp_empty: '문서에서 본문을 찾지 못했습니다', hwpx_empty: '문서에서 본문을 찾지 못했습니다',
-  unknown_format: '한글 문서 형식이 아닙니다', backup: 'MYWONGO 백업 파일이 아닙니다',
+  unknown_format: '한글 문서 형식이 아닙니다', backup: '라이트닝 라이트 원고 백업 파일이 아닙니다',
   unsupported: 'HWP·HWPX·TXT 파일이나 원고 백업(.json)만 불러올 수 있습니다'
 };
 $('#importBtn').addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('#fileIn').click(); } });

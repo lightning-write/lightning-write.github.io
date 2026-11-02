@@ -1,10 +1,10 @@
-<title>MYWONGO 라이트닝</title>
+<title>라이트닝 라이트</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@400;700&display=swap">
 <style>
 @font-face{font-family:'KoPub Batang';src:url('kopub-batang-light.woff') format('woff');font-weight:400;font-style:normal;font-display:swap}
-/* 앱(MYWONGO)과 같은 종이·잉크·남색. 번개로 흘러나오는 문장만 남색 물빛과 점선 밑줄로 구분한다 */
+/* 앱과 같은 종이·잉크·남색. 번개로 흘러나오는 문장만 남색 물빛과 점선 밑줄로 구분한다 */
 :root{
   --paper:#ffffff; --ink:#1f2328; --muted:#66707c; --line:#cdd3da; --chrome:#f4f5f7; --hover:#e8ecf1;
   --accent:#2c4a6e; --accent-ink:#ffffff; --live:rgba(44,74,110,.08); --warn:#a4462b; --scrim:rgba(18,22,28,.32);
@@ -299,7 +299,7 @@ button.ghost:hover{background:var(--hover)}
       <button id="tidyBtn" class="icon" type="button" data-tip="build" data-tip-d="쓴 데까지 맞춤법·띄어쓰기·군더더기를 정리합니다. 바뀐 곳을 보고 받을 것만 고릅니다" aria-label="build: 쓴 데까지 정리"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13.5 4.5 6 6-2.5 2.5-6-6z"/><path d="M12.2 8.2 4.4 16a1.6 1.6 0 0 0 2.3 2.3l7.8-7.8"/></svg></button>
       <button id="fragBtn" class="icon" type="button" data-tip="bricks" data-tip-d="떠오른 소재를 모아 두는 조각함. 번개와 build가 꼭 맞는 자리에만 씁니다" aria-label="bricks: 조각함"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M9 14.3V19"/></svg><span id="fragN" class="badge"></span></button>
       <button id="stormBtn" class="icon" type="button" data-tip="스토밍" data-tip-d="브레인스토밍으로 8페이지즈 개요를 짜고, 개요 완료로 인물표·연표를 만듭니다" aria-label="스토밍"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2 0 2.6-5 4.6-5s2.4 3 4.4 3 2.4-8 4.6-8S20 14 21 15"/><path d="M3 19h18"/></svg></button>
-      <button id="sendBtn" class="icon primary" type="button" data-tip="레이닝" data-tip-d="이 원고를 드라이브를 거쳐 MYWONGO 앱으로 보냅니다. 앱의 '라이트닝에서 받기'로 받습니다" aria-label="레이닝: 앱으로 보내기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 15.5a4 4 0 0 1-.7-7.94A5.5 5.5 0 0 1 16.9 7a3.75 3.75 0 0 1 .35 7.48"/><path d="M9 18l-1 2.5M13 17l-1 3.5M17 18l-1 2.5"/></svg></button>
+      <button id="sendBtn" class="icon primary" type="button" data-tip="레이닝" data-tip-d="이 원고를 드라이브를 거쳐 앱으로 보냅니다. 앱의 '라이트닝에서 받기'로 받습니다" aria-label="레이닝: 앱으로 보내기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 15.5a4 4 0 0 1-.7-7.94A5.5 5.5 0 0 1 16.9 7a3.75 3.75 0 0 1 .35 7.48"/><path d="M9 18l-1 2.5M13 17l-1 3.5M17 18l-1 2.5"/></svg></button>
     </div>
   </header>
 
@@ -1741,6 +1741,7 @@ function stormForBolt(){
 }
 
 /* ================= 구글 드라이브 (claude.ai의 Google Drive 커넥터) =================
+   드라이브 폴더 이름은 옛 이름 MYWONGO 그대로 둔다(앱·다른 기기와 같은 폴더를 찾아야 하므로)
    읽기: MYWONGO/동기화 자료 (앱이 원고마다 올리는 .json)
    쓰기: MYWONGO/라이트닝 보낸 원고 (원고마다 최신 한 파일만 남긴다). 앱의 '라이트닝에서 받기'가 이 폴더를 읽는다 */
 const DRIVE = 'Google Drive', ROOT = 'MYWONGO', DATA = '동기화 자료 (지우지 마세요)', SENT = '라이트닝 보낸 원고';
@@ -1800,7 +1801,7 @@ function driveErr(e, what){
   if(c === 'not_in_manifest' || c === 'approval_required' || c === 'consent_required') return '이 페이지가 Google Drive를 쓰도록 허락해야 합니다. 다시 누르면 허락 창이 뜹니다.';
   if(c === 'blocked_by_policy') return '조직 정책 때문에 이 페이지에서 Google Drive를 쓸 수 없습니다.';
   if(c === 'no_root' || c === 'no_data') return '드라이브에서 MYWONGO 폴더를 찾지 못했습니다. 앱에서 드라이브 연결을 켜고 한 번 동기화해 주세요.';
-  if(c === 'bad_json') return '이 파일은 MYWONGO 원고 형식이 아닙니다.';
+  if(c === 'bad_json') return '이 파일은 라이트닝 라이트 원고 형식이 아닙니다.';
   if(c === 'tool_error') return 'Google Drive가 요청을 거절했습니다' + (e.message ? ': ' + clip(String(e.message), 120) : '.');
   if(what === 'send' && (c === 'server_unavailable' || c === 'upstream_error' || c === 'cancelled')) return '보냈는지 확실하지 않습니다. 앱에서 받아 보고, 들어오지 않았으면 다시 보내 주세요.';
   if(c === 'server_unavailable' || c === 'upstream_error' || c === 'rate_limited') return 'Google Drive가 잠시 응답하지 않습니다. 잠시 뒤 다시 해 주세요.';
