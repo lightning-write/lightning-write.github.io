@@ -1282,11 +1282,34 @@ function normLtUrl(v){
   if(u.protocol !== 'https:' || !/(^|\.)claude\.ai$/i.test(u.hostname) || !/\/artifact\/[A-Za-z0-9_-]+/.test(u.pathname)) return null;
   return u.origin + u.pathname;
 }
+/* 크롬에서 열기(휴대폰·태블릿): 웹 앱은 링크를 열 브라우저를 고를 수 없어서, 안드로이드는 intent 주소로, 아이폰·아이패드는 크롬의 googlechromes:// 주소로 크롬을 콕 집어 연다.
+   컴퓨터에서는 고를 방법이 없어 설정을 보이지 않는다. 크롬이 안 열리면(깔려 있지 않으면) 기본 브라우저로 여는 단추를 보인다 */
+const UA = navigator.userAgent || '';
+const IS_ANDROID = /Android/i.test(UA);
+const IS_IOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const ltChrome = () => (IS_ANDROID || IS_IOS) && !!lsGet('lt-chrome', false);
+function chromeUrl(url){
+  const rest = url.replace(/^https:\/\//, '');
+  return IS_ANDROID ? 'intent://' + rest + '#Intent;scheme=https;package=com.android.chrome;end' : 'googlechromes://' + rest;
+}
+let chromeT = null;
+const CHROME_MISS = '크롬이 열리지 않으면 크롬이 깔려 있는지 확인해 주세요. 지금은 기본 브라우저로 열 수 있습니다.';
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState !== 'hidden') return;
+  clearTimeout(chromeT);   // 크롬으로 넘어갔다
+  if($('#noticeText').textContent === CHROME_MISS) $('#notice').hidden = true;
+});
 function openLightning(){
   const url = ltUrl();
   if(!url){ ltAddr(true); return; }
   if(navigator.onLine === false){ toast('인터넷에 연결된 뒤 라이트닝 페이지를 열 수 있습니다.', 6000); return; }
-  window.open(url, 'mywongo-lightning');
+  if(ltChrome()){
+    location.href = chromeUrl(url);
+    clearTimeout(chromeT);
+    chromeT = setTimeout(() => {
+      if(document.visibilityState === 'visible') notice(CHROME_MISS, '기본 브라우저로 열기', () => { $('#notice').hidden = true; window.open(url, 'mywongo-lightning'); });
+    }, 3000);
+  } else window.open(url, 'mywongo-lightning');
   rain(true);
 }
 let ltAddrThenOpen = false;
@@ -1294,6 +1317,8 @@ function ltAddr(thenOpen){
   ltAddrThenOpen = !!thenOpen;
   $('#ltAddrIn').value = ltUrl();
   $('#ltAddrSave').textContent = thenOpen ? '저장하고 열기' : '저장';
+  $('#ltChromeRow').hidden = !(IS_ANDROID || IS_IOS);
+  $('#ltChrome').checked = ltChrome();
   const m = $('#ltAddrMsg'); m.classList.remove('err'); m.textContent = '이 기기에만 저장합니다. 컴퓨터·휴대폰·태블릿마다 한 번씩 넣어 주세요.';
   $('#ltAddrDlg').hidden = false;
   setTimeout(() => $('#ltAddrIn').focus(), 0);
@@ -1308,6 +1333,7 @@ $('#ltAddrBox').onsubmit = e => {
   if(ltAddrThenOpen) openLightning(); else toast('라이트닝 주소를 저장했습니다.', 4000);
 };
 $('#ltAddrClose').onclick = ltAddrClose;
+$('#ltChrome').onchange = () => { lsSet('lt-chrome', $('#ltChrome').checked); toast($('#ltChrome').checked ? '이 기기에서는 라이트닝 페이지를 크롬으로 엽니다.' : '이 기기에서는 라이트닝 페이지를 기본 브라우저로 엽니다.', 4000); };
 $('#ltAddrDlg').addEventListener('click', e => { if(e.target === $('#ltAddrDlg')) ltAddrClose(); });
 $('#ltAddrDlg').addEventListener('keydown', e => { if(e.key === 'Escape'){ e.stopPropagation(); ltAddrClose(); } });
 $('#ltAddrBtn').onclick = () => { if(narrow()) drawer(false); ltAddr(false); };

@@ -57,6 +57,9 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #ltAddrBox a{color:inherit}
 #ltAddrIn{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:14px;margin:4px 0}
 .ltAddrBtns{display:flex;justify-content:flex-end;margin-top:8px}
+#ltChromeRow{margin:12px 0 0;padding-top:10px;border-top:1px solid var(--line)}
+#ltChromeRow label{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer}
+#ltChromeRow input{width:16px;height:16px;margin:0;accent-color:var(--accent)}
 #drvBox{background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:min(520px,100%);max-height:min(640px,calc(100dvh - 24px));display:flex;flex-direction:column;overflow:hidden}
 #drvBox header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px 6px}
 #drvBox h2{font-size:15px;margin:0}
@@ -358,7 +361,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
           <button id="syncNowBtn" hidden>지금 동기화</button>
           <button id="driveOffBtn" class="ghost" hidden>연결 끊기</button>
           <button id="installBtn" hidden>앱으로 설치</button>
-          <button id="ltAddrBtn" class="ghost">라이트닝 주소</button>
+          <button id="ltAddrBtn" class="ghost">라이트닝 설정</button>
         </div>
       </div>
     </aside>
@@ -388,11 +391,15 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 
 <div id="ltAddrDlg" hidden role="dialog" aria-modal="true" aria-labelledby="ltAddrTitle">
   <form id="ltAddrBox" novalidate>
-    <header><h2 id="ltAddrTitle">내 라이트닝 페이지 주소</h2><button id="ltAddrClose" class="ghost" type="button">닫기</button></header>
+    <header><h2 id="ltAddrTitle">내 라이트닝 페이지</h2><button id="ltAddrClose" class="ghost" type="button">닫기</button></header>
     <p>claude.ai에서 <b>내 계정의</b> 라이트닝 페이지를 열고, 주소창의 주소를 복사해 붙여 넣으세요.</p>
     <input id="ltAddrIn" type="url" inputmode="url" placeholder="https://claude.ai/artifact/…" autocomplete="off" spellcheck="false" aria-label="라이트닝 페이지 주소">
     <p id="ltAddrMsg" class="hint" aria-live="polite">이 기기에만 저장합니다. 컴퓨터·휴대폰·태블릿마다 한 번씩 넣어 주세요.</p>
     <p class="hint">라이트닝 페이지가 아직 없으면: <a href="https://github.com/lightning-write/lightning-write.github.io/tree/main/lightning-page" target="_blank" rel="noopener">내 라이트닝 페이지 만드는 법</a></p>
+    <div id="ltChromeRow" hidden>
+      <label><input id="ltChrome" type="checkbox"> 크롬에서 열기</label>
+      <p class="hint">이 기기에서는 라이트닝 페이지를 기본 브라우저 대신 크롬으로 엽니다. 크롬이 깔려 있고 claude.ai에 로그인되어 있어야 합니다.</p>
+    </div>
     <div class="ltAddrBtns"><button id="ltAddrSave" class="primary" type="submit">저장하고 열기</button></div>
   </form>
 </div>
