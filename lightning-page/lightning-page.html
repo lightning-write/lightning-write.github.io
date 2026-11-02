@@ -595,7 +595,7 @@ function saveLocal(){
   drafts[doc.id] = doc; trimDrafts(); lsSet('drafts', drafts); lsSet('last', doc.id);
 }
 const saveSoon = () => { clearTimeout(saveT); saveT = setTimeout(saveLocal, 700); };
-function markChanged(){ if(!doc) return; doc.changed = true; editSeq++; renderState(); stats(); saveSoon(); }
+function markChanged(){ if(!doc) return; doc.changed = true; doc.editAt = Date.now(); editSeq++; renderState(); stats(); saveSoon(); }
 function renderState(){
   const s = $('#saveState');
   s.classList.remove('due');
@@ -618,6 +618,7 @@ function openDoc(d, quiet){
   scroller.scrollTop = 0;
   if(!quiet) $('#notice').hidden = true;
   if(d.trashed) notice('앱의 휴지통에 있는 원고입니다. 여기서 고쳐 보내면 앱에서 휴지통 밖으로 나옵니다.');
+  if(!d.fresh && goneAt(d.id) && keepGone(d)){ goneNoted.add(d.id); notice(goneKeptMsg(d)); }
   stats(); renderState(); renderList();
   if(!d.fresh) lsSet('last', d.id);
 }
@@ -1777,11 +1778,14 @@ async function findDirs(){
   throw {code: 'no_data'};
 }
 function b64text(s){ const bin = atob(String(s).replace(/\s+/g, '')); const u = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new TextDecoder('utf-8').decode(u); }
-async function fetchJson(fileId){
+async function fetchRaw(fileId){
   const p = await dcall('download_file_content', {fileId}, true);
   const raw = p && typeof p === 'object' ? (p.content || p.base64Content || '') : '';
   if(!raw) throw {code: 'bad_json'};
-  let d; try{ d = JSON.parse(b64text(raw)); }catch(e){ throw {code: 'bad_json'}; }
+  try{ return JSON.parse(b64text(raw)); }catch(e){ throw {code: 'bad_json'}; }
+}
+async function fetchJson(fileId){
+  const d = await fetchRaw(fileId);
   if(!d || d.app !== 'wongo' || !d.id || typeof d.html !== 'string') throw {code: 'bad_json'};
   return d;
 }
@@ -1804,14 +1808,85 @@ function driveErr(e, what){
 }
 
 /* ---------- 원고 목록 ---------- */
-let syncItems = null, sentItems = [], listBusy = false;
+let syncItems = null, sentItems = [], sentLoaded = false, listBusy = false;
 let meta = lsGet('meta', {});   // 드라이브 파일 → {ms: 원고 id, trashed}
 const msOfSync = it => it.ms || (meta[it.file.id] && meta[it.file.id].ms) || null;
 function setSyncItems(sf){
   // 앱의 동기화 파일 이름은 「제목 [원고 id].json」. 예전 이름(id 없음)은 한 번 열어 본 기록(meta)으로 알아본다
   syncItems = sf.filter(f => /\.json$/i.test(f.title || '')).map(f => ({kind: 'sync', file: f, ms: sentIdOf(f.title), title: String(f.title).replace(/\s*\[[a-z0-9]+\]\.json$/i, '').replace(/\.json$/i, ''), mod: Date.parse(f.modifiedTime) || 0}));
 }
+function setSentItems(tf){
+  sentItems = tf.map(f => ({kind: 'sent', file: f, ms: sentIdOf(f.title), title: String(f.title || '').replace(/\s*\[[a-z0-9]+\]\.json$/i, ''), mod: Date.parse(f.modifiedTime) || 0})).filter(x => x.ms);
+  sentLoaded = true;
+}
 function sentFor(ms){ return sentItems.filter(s => s.ms === ms).sort((a, b) => b.mod - a.mod)[0] || null; }
+
+/* ---------- 앱에서 완전히 지운 원고 ----------
+   앱은 완전히 지운 원고를 '동기화 자료' 폴더의 「지운 원고 기록」에 남긴다({ids: {원고 id: 지운 때}}).
+   지운 때까지 여기서 보낸 파일은 휴지통에 넣고, 이 브라우저의 사본도 지운다.
+   지운 뒤에 여기서 고쳤거나 다시 보낸 사본은 남긴다. 레이닝 하면 앱에 새 원고로 다시 들어간다 */
+const GONE = '지운 원고 기록';
+const goneKeptMsg = d => (d.sentAt || 0) > goneAt(d.id)
+  ? '앱에서 완전히 지운 뒤 여기서 다시 보낸 원고입니다. 앱에서 받으면 새 원고로 들어갑니다.'
+  : '앱에서 완전히 지운 원고입니다. 지운 뒤에 여기서 고친 것이 있어 남겨 두었습니다. 레이닝 하면 앱에 새 원고로 다시 들어갑니다.';
+let gone = lsGet('gone', {});
+const goneNoted = new Set();
+function goneAt(ms){ return (ms && gone[ms]) || 0; }
+function keepGone(d){ const t = goneAt(d.id); return (d.changed && (d.editAt || 0) > t) || (d.sentAt || 0) > t; }
+function isGone(d){ return !!(d && goneAt(d.id) && !keepGone(d)); }
+const sentGone = s => goneAt(s.ms) && s.mod <= goneAt(s.ms);
+async function loadGone(sf){
+  const fs = sf.filter(f => f.title === GONE);
+  const rev = fs.map(f => f.id + ':' + f.modifiedTime).join(',');
+  if(!fs.length || rev === lsGet('gone-rev', '')) return false;
+  const ids = {};
+  for(const f of fs){
+    const j = await fetchRaw(f.id);
+    if(j && j.app === 'wongo' && j.kind === 'gone' && j.ids && typeof j.ids === 'object')
+      for(const [k, t] of Object.entries(j.ids)) if(typeof t === 'number') ids[k] = Math.max(ids[k] || 0, t);
+  }
+  gone = ids; lsSet('gone', gone); lsSet('gone-rev', rev);
+  for(const k of Object.keys(meta)) if(meta[k] && gone[meta[k].ms]) delete meta[k];
+  lsSet('meta', meta);
+  return true;
+}
+function sweepGone(){
+  let n = 0;
+  for(const d of Object.values(drafts)) if(isGone(d) && !(doc && doc.id === d.id)){ delete drafts[d.id]; n++; }
+  if(n) lsSet('drafts', drafts);
+  if(doc && !doc.fresh && goneAt(doc.id)){
+    if(keepGone(doc)){
+      if(!goneNoted.has(doc.id)){ goneNoted.add(doc.id); notice(goneKeptMsg(doc)); }
+    } else if(!gen && !sending && !stBusy){
+      const t = doc.title || '제목 없는 원고';
+      delete drafts[doc.id]; lsSet('drafts', drafts);
+      doc = null; newDoc();
+      notice('「' + t + '」은(는) 앱에서 완전히 지운 원고라 여기서도 닫았습니다.');
+    }
+  }
+  if(!$('#listDlg').hidden) renderList();
+}
+async function applyGone(sf, sentFresh){
+  let fresh = false;
+  try{ fresh = await loadGone(sf); }catch(e){ /* 다음에 다시 읽는다 */ }
+  sweepGone();
+  // 기록이 바뀌었거나 이번에 아직 보낸 원고 폴더를 안 봤으면, 지운 원고의 보낸 파일을 찾아 치운다
+  if(!sentFresh && Object.keys(gone).length && (fresh || !sentLoaded)){
+    try{ const d = await findDirs(); if(d.sent) setSentItems(await listQ('parentId = ' + qs(d.sent))); }catch(e){}
+  }
+  sweepSent();   // 휴지통에 넣는 동안 목록을 막지 않는다
+}
+let sweeping = false;
+async function sweepSent(){
+  const dead = sentItems.filter(sentGone);
+  if(!dead.length || sweeping) return;
+  sweeping = true;
+  sentItems = sentItems.filter(s => !sentGone(s));
+  if(!$('#listDlg').hidden) renderList();
+  try{ for(const s of dead){ try{ await dcall('trash_file', {fileId: s.file.id}); }catch(e){} } }
+  finally{ sweeping = false; }
+}
+
 async function loadList(){
   if(listBusy) return;
   if(!mcp){ $('#listMsg').textContent = 'claude.ai 안에서 이 페이지를 열어야 드라이브의 원고를 볼 수 있습니다. 지금은 이 기기에 저장한 원고만 보입니다.'; renderList(); return; }
@@ -1821,7 +1896,8 @@ async function loadList(){
     const d = await findDirs();
     const [sf, tf] = await Promise.all([listQ('parentId = ' + qs(d.data)), d.sent ? listQ('parentId = ' + qs(d.sent)) : Promise.resolve([])]);
     setSyncItems(sf);
-    sentItems = tf.map(f => ({kind: 'sent', file: f, ms: sentIdOf(f.title), title: String(f.title || '').replace(/\s*\[[a-z0-9]+\]\.json$/i, ''), mod: Date.parse(f.modifiedTime) || 0})).filter(x => x.ms);
+    setSentItems(tf);
+    await applyGone(sf, true);
     $('#listMsg').textContent = syncItems.length ? '' : '드라이브에 앱의 원고가 아직 없습니다. 앱에서 드라이브 동기화를 켜면 여기에 보입니다.';
   }catch(e){
     $('#listMsg').textContent = driveErr(e, 'list');
@@ -1839,10 +1915,10 @@ function groupHead(text){ const li = document.createElement('li'); li.innerHTML 
 function renderList(){
   const ul = $('#msList'); ul.textContent = '';
   const cur = doc && doc.id;
-  const local = Object.values(drafts).filter(d => d.changed).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const local = Object.values(drafts).filter(d => d.changed && !isGone(d)).sort((a, b) => (b.at || 0) - (a.at || 0));
   if(local.length){
     ul.appendChild(groupHead('여기서 고치고 아직 보내지 않은 원고'));
-    for(const d of local) ul.appendChild(msItem(d.title, ((d.chars || 0) / 200).toFixed(1) + '매 · ' + fmtWhen(d.at), '보낼 내용 있음', cur === d.id, () => { openDoc(drafts[d.id]); closeSheet('listDlg'); }));
+    for(const d of local) ul.appendChild(msItem(d.title, ((d.chars || 0) / 200).toFixed(1) + '매 · ' + fmtWhen(d.at) + (goneAt(d.id) ? ' · 앱에서 지움' : ''), '보낼 내용 있음', cur === d.id, () => { openDoc(drafts[d.id]); closeSheet('listDlg'); }));
   }
   if(syncItems){
     const known = new Set();
@@ -1854,7 +1930,7 @@ function renderList(){
       const dr = ms && drafts[ms], appNew = dr && dr.appMod && it.mod > dr.appMod;
       ul.appendChild(msItem(it.title, fmtWhen(it.mod) + (mi && mi.trashed ? ' · 앱의 휴지통' : ''), dr && dr.changed ? '보낼 내용 있음' + (appNew ? ' · 앱에서도 고침' : '') : appNew ? '앱에서 고침' : waiting ? '보냈고 앱에서 받기 전' : '', cur && cur === ms, () => openItem(it)));
     }
-    const pending = sentItems.filter(s => !known.has(s.ms)).sort((a, b) => b.mod - a.mod).filter((s, i, a) => a.findIndex(x => x.ms === s.ms) === i);
+    const pending = sentItems.filter(s => !known.has(s.ms) && !sentGone(s)).sort((a, b) => b.mod - a.mod).filter((s, i, a) => a.findIndex(x => x.ms === s.ms) === i);
     if(pending.length){
       ul.appendChild(groupHead('여기서 보낸 원고'));
       for(const s of pending) ul.appendChild(msItem(s.title, '보낸 때 ' + fmtWhen(s.mod), '', cur === s.ms, () => openItem(s)));
@@ -1892,7 +1968,7 @@ async function openItem(it, pre){
     $('#listMsg').textContent = driveErr(e, 'open');
   }finally{ listBusy = false; }
 }
-$('#listBtn').onclick = () => { openSheet('listDlg'); renderList(); if(!syncItems) loadList(); checkApp(); };
+$('#listBtn').onclick = () => { openSheet('listDlg'); renderList(); if(!syncItems || !sentLoaded) loadList(); checkApp(); };
 
 /* ---------- 앱에서 레이닝 한 판 받기 ----------
    이 페이지를 열 때, 이 페이지로 돌아올 때, 목록을 열 때 지금 원고의 앱 판(동기화 자료)을 살핀다.
@@ -1913,8 +1989,10 @@ async function checkApp(force){
   const id = doc.id;
   try{
     const d = await findDirs();
-    setSyncItems(await listQ('parentId = ' + qs(d.data)));
+    const sf = await listQ('parentId = ' + qs(d.data));
+    setSyncItems(sf); await applyGone(sf);
     if(!$('#listDlg').hidden) renderList();
+    if(!doc || doc.id !== id) return;
     const it = syncItems.find(x => msOfSync(x) === id || (doc.syncId && x.file.id === doc.syncId));
     if(!it || !doc || doc.id !== id || (doc.appMod && it.mod <= doc.appMod)) return;
     const rec = await fetchJson(it.file.id);
@@ -1947,7 +2025,8 @@ async function followApp(force){
   followBusy = true; followAt = Date.now();
   try{
     const d = await findDirs();
-    setSyncItems(await listQ('parentId = ' + qs(d.data)));
+    const sf = await listQ('parentId = ' + qs(d.data));
+    setSyncItems(sf); await applyGone(sf);
     if(!$('#listDlg').hidden) renderList();
     const top = syncItems.slice().sort((a, b) => b.mod - a.mod)[0];
     if(!top || top.mod <= (follow.mod || 0)) return false;
@@ -2011,6 +2090,7 @@ document.addEventListener('visibilitychange', () => { if(document.visibilityStat
 (async function boot(){
   try{ document.execCommand('defaultParagraphSeparator', false, 'div'); }catch(e){}
   renderPrefs();
+  sweepGone();   // 지난번에 받아 둔 지운 원고 기록으로 이 브라우저의 사본부터 치운다
   const last = lsGet('last', null);
   if(last && drafts[last]) openDoc(drafts[last]);
   else { newDoc(); openSheet('listDlg'); renderList(); $('#listMsg').textContent = '드라이브에 연결하는 중…'; }

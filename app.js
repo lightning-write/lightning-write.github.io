@@ -284,7 +284,15 @@ async function restoreMs(id){
   setSave('saved', '휴지통에서 되살렸습니다');
   Drive.soon(1500);
 }
+/* 완전히 지운 원고는 '지운 원고 기록'에 남는다(id → 지운 때). 드라이브 동기화로 다른 기기와 라이트닝 페이지에 가서,
+   라이트닝은 그 원고의 보낸 파일과 브라우저 사본을 치우고, 앱의 받기는 지운 뒤에 보낸 판이 아니면 다시 들이지 않는다 */
+function markGone(ids){
+  const g = lsGet('gone', {}), now = Date.now();
+  for(const id of ids) g[id] = now;
+  lsSet('gone', g); lsSet('gone-up', now + Math.random());   // 올릴 기록이 있다는 표시. 올리는 사이에 또 지우면 값이 바뀌어 다음 동기화가 다시 올린다
+}
 async function purgeMs(ids){
+  markGone(ids);
   for(const id of ids) await DB.update(id, r => !r ? undefined : r.fileId ? Object.assign({}, r, {deleted: true, dirty: false}) : null);
   await refreshList();
   Drive.soon(500);
@@ -295,6 +303,7 @@ async function purgeOldTrash(){
   if(old.length) await purgeMs(old);
 }
 async function removeMs(id){
+  markGone([id]);
   await DB.update(id, r => !r ? undefined : r.fileId ? Object.assign({}, r, {deleted: true, dirty: false}) : null);
   if(cur && cur.id === id){ cur = null; dirty = false; }
   await refreshList();
@@ -850,6 +859,45 @@ const Drive = (() => {
   }
   const safeName = t => (t || '제목 없는 원고').replace(/[\\/]/g, ' ').slice(0, 120);
 
+  /* ---- 지운 원고 기록: 동기화 자료 폴더의 「지운 원고 기록」 한 파일 ----
+     이름이 .json으로 끝나지 않아 라이트닝 목록에 원고로 섞이지 않는다. 내용은 {app:'wongo', kind:'gone', v:1, ids:{원고 id: 지운 때}}.
+     여러 기기의 기록을 합치고, 다시 살아난 원고(드라이브에 파일이 있거나 이 기기에 있는 원고)와 400일 지난 기록은 뺀다 */
+  const GONE_NAME = '지운 원고 기록', GONE_DAYS = 400;
+  function goneMerge(){
+    const cut = Date.now() - GONE_DAYS * 86400000, out = {};
+    for(const s of arguments) for(const [k, t] of Object.entries(s || {})) if(typeof t === 'number' && t > cut) out[k] = Math.max(out[k] || 0, t);
+    return out;
+  }
+  const goneIds = j => j && typeof j === 'object' && j.kind === 'gone' && j.ids && typeof j.ids === 'object' ? j.ids : {};
+  const sameMap = (a, b) => { const ka = Object.keys(a); return ka.length === Object.keys(b).length && ka.every(k => a[k] === b[k]); };
+  async function syncGone(data, remote){
+    const upAt = lsGet('gone-up', false);
+    const files = await find("'" + data + "' in parents and trashed=false and appProperties has { key='kind' and value='gone' }", 'id,version');
+    const rev = files.map(f => f.id + ':' + f.version).join(',');
+    const alive = new Set([...remote.keys(), ...(await DB.all()).filter(r => !r.deleted).map(r => r.id)]);
+    // 올릴 것도, 드라이브에서 바뀐 것도, 기록에 있는데 다시 살아난 원고도 없으면 그냥 넘어간다
+    if(!upAt && rev === lsGet('gone-rev', '') && !Object.keys(lsGet('gone', {})).some(id => alive.has(id))) return;
+    let rem = {};
+    for(const f of files){
+      try{ const raw = await api('/drive/v3/files/' + f.id + '?alt=media'); rem = goneMerge(rem, goneIds(typeof raw === 'string' ? JSON.parse(raw) : raw)); }
+      catch(e){ if(e && e.code && e.code !== 'notfound') throw e; }
+    }
+    const merged = goneMerge(rem, lsGet('gone', {}));
+    for(const id of Object.keys(merged)) if(alive.has(id)) delete merged[id];
+    lsSet('gone', merged);
+    let done = rev;
+    if(files.length > 1 || !sameMap(merged, rem)){
+      const body = JSON.stringify({app: 'wongo', kind: 'gone', v: 1, ids: merged});
+      const res = files.length
+        ? await upload(files[0].id, {name: GONE_NAME}, body, 'application/json')
+        : Object.keys(merged).length ? await upload(null, {name: GONE_NAME, parents: [data], mimeType: 'application/json', appProperties: {kind: 'gone'}}, body, 'application/json') : null;
+      for(const f of files.slice(1)){ try{ await api('/drive/v3/files/' + f.id + '?fields=id', {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({trashed: true})}); }catch(e){ if(e.code !== 'notfound') throw e; } }
+      done = res ? res.id + ':' + res.version : '';
+    }
+    lsSet('gone-rev', done);
+    if(lsGet('gone-up', false) === upAt) lsSet('gone-up', false);
+  }
+
   async function sync(){
     if(!CID || !wanted) return render();
     if(running){ again = true; return; }
@@ -912,6 +960,8 @@ const Drive = (() => {
         } else res = await upload(null, create, body, 'application/json');
         await DB.update(l.id, r => r ? Object.assign({}, r, {fileId: res.id, rev: res.version, dirty: r.updatedAt !== l.updatedAt}) : undefined);
       }
+      // 5. 지운 원고 기록 맞추기
+      await syncGone(data, remote);
       lastSync = Date.now(); st = 'ok';
     }catch(e){
       if(e.code === 'notfound') folders = null;
@@ -1043,6 +1093,19 @@ const Drive = (() => {
     }
     return out;
   }
+  /* 드라이브의 지운 원고 기록을 읽어 이 기기의 기록에 합친다. 아직 동기화를 한 번도 안 한 기기에서도 지운 원고를 되살리지 않으려고 */
+  async function roGone(){
+    try{
+      const fs = await roList("appProperties has { key='kind' and value='gone' } and trashed=false", 'id,modifiedTime');
+      const rev = fs.map(f => f.id + ':' + f.modifiedTime).join(',');
+      if(fs.length && rev !== lsGet('gone-ro', '')){
+        let add = {};
+        for(const f of fs) add = goneMerge(add, goneIds(await (await roFetch('/drive/v3/files/' + f.id + '?alt=media')).json()));
+        lsSet('gone', goneMerge(lsGet('gone', {}), add)); lsSet('gone-ro', rev);
+      }
+    }catch(e){ if(e && (e.code === 'auth' || e.code === 'network')) throw e; }
+    return lsGet('gone', {});
+  }
   async function receive(auto){
     if(recvBusy) return;
     if(!CID){ if(!auto) toast('구글 드라이브 설정이 아직 되어 있지 않습니다.'); return; }
@@ -1061,6 +1124,7 @@ const Drive = (() => {
       const files = (await roList("'" + dir + "' in parents and trashed=false", 'id,name,modifiedTime'))
         .filter(f => seen[f.id] !== f.modifiedTime).sort((a, b) => a.modifiedTime < b.modifiedTime ? -1 : 1);
       if(!files.length){ if(!auto) toast('새로 받을 원고가 없습니다.', 3000); return; }
+      const gone = await roGone();
       await flush();
       const ch = {updated: new Set(), removed: new Set(), added: new Set(), conflicts: []};
       const got = [], copies = [];
@@ -1076,9 +1140,11 @@ const Drive = (() => {
         let outcome = null, gotId = d.id;
         // ltGot = 이 원고가 라이트닝에서 마지막으로 받은 판의 시각. 드라이브로 다른 기기에도 따라가서, 이미 받은 판을 다시 받지 않는다
         const got1 = d.updatedAt || 0;
+        // 앱에서 완전히 지운 원고: 지운 뒤에 라이트닝에서 새로 보낸 판이 아니면 다시 들이지 않는다
+        const goneT = gone[d.id] || 0, wasGone = goneT && got1 <= goneT;
         await DB.update(d.id, r => {
-          if(!r){ outcome = 'added'; return Object.assign({id: d.id, lt: d.lt || null, dirty: true, fileId: null, rev: null, ltGot: got1}, fields); }
-          if(r.deleted){ outcome = 'copy'; return undefined; }
+          if(!r){ if(wasGone){ outcome = 'gone'; return undefined; } outcome = 'added'; return Object.assign({id: d.id, lt: d.lt || null, dirty: true, fileId: null, rev: null, ltGot: got1}, fields); }
+          if(r.deleted){ outcome = wasGone ? 'gone' : 'copy'; return undefined; }
           if(r.ltGot && got1 <= r.ltGot){ outcome = 'same'; return undefined; }
           if(r.html === d.html && r.title === title && !r.trashed){
             outcome = 'same';
@@ -1097,7 +1163,7 @@ const Drive = (() => {
           await DB.put(Object.assign({id: gotId, lt: d.lt || null, dirty: true, fileId: null, rev: null}, fields, {title: title + ' (라이트닝 사본)'}));
           ch.added.add(gotId); copies.push(title);
         }
-        if(outcome !== 'same') ch.last = gotId;
+        if(outcome !== 'same' && outcome !== 'gone') ch.last = gotId;
       }
       lsSet('lt-seen', seen);
       if(ch.added.size || ch.updated.size){
