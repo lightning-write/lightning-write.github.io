@@ -1287,7 +1287,8 @@ function normLtUrl(v){
 const UA = navigator.userAgent || '';
 const IS_ANDROID = /Android/i.test(UA);
 const IS_IOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const ltChrome = () => (IS_ANDROID || IS_IOS) && !!lsGet('lt-chrome', false);
+// 안드로이드는 뺐다: 크롬으로 만든 앱 안에서 크롬을 부르면 크롬이 자기 앱 안의 링크로 처리해 다시 기본 브라우저로 열렸다(작가 확인, 두 방식 모두). 안드로이드는 기본 브라우저를 크롬으로 바꾸면 된다
+const ltChrome = () => IS_IOS && !!lsGet('lt-chrome', false);
 /* 안드로이드: https 주소를 크롬 앞으로 보내도(scheme=https;package=크롬) 앱을 띄운 브라우저(삼성 인터넷 등)가 스스로 열어 버릴 수 있다.
    그래서 크롬만 받는 googlechrome://navigate?url= 주소를 크롬 앞으로 보낸다. 크롬은 url 뒤를 그대로 쓰므로 인코딩하지 않는다 */
 function chromeUrl(url){
@@ -1319,7 +1320,7 @@ function ltAddr(thenOpen){
   ltAddrThenOpen = !!thenOpen;
   $('#ltAddrIn').value = ltUrl();
   $('#ltAddrSave').textContent = thenOpen ? '저장하고 열기' : '저장';
-  $('#ltChromeRow').hidden = !(IS_ANDROID || IS_IOS);
+  $('#ltChromeRow').hidden = !IS_IOS;
   $('#ltChrome').checked = ltChrome();
   const m = $('#ltAddrMsg'); m.classList.remove('err'); m.textContent = '이 기기에만 저장합니다. 컴퓨터·휴대폰·태블릿마다 한 번씩 넣어 주세요.';
   $('#ltAddrDlg').hidden = false;
