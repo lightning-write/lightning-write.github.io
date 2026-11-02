@@ -1288,9 +1288,11 @@ const UA = navigator.userAgent || '';
 const IS_ANDROID = /Android/i.test(UA);
 const IS_IOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const ltChrome = () => (IS_ANDROID || IS_IOS) && !!lsGet('lt-chrome', false);
+/* 안드로이드: https 주소를 크롬 앞으로 보내도(scheme=https;package=크롬) 앱을 띄운 브라우저(삼성 인터넷 등)가 스스로 열어 버릴 수 있다.
+   그래서 크롬만 받는 googlechrome://navigate?url= 주소를 크롬 앞으로 보낸다. 크롬은 url 뒤를 그대로 쓰므로 인코딩하지 않는다 */
 function chromeUrl(url){
-  const rest = url.replace(/^https:\/\//, '');
-  return IS_ANDROID ? 'intent://' + rest + '#Intent;scheme=https;package=com.android.chrome;end' : 'googlechromes://' + rest;
+  return IS_ANDROID ? 'intent://navigate?url=' + url + '#Intent;scheme=googlechrome;package=com.android.chrome;end'
+    : 'googlechromes://' + url.replace(/^https:\/\//, '');
 }
 let chromeT = null;
 const CHROME_MISS = '크롬이 열리지 않으면 크롬이 깔려 있는지 확인해 주세요. 지금은 기본 브라우저로 열 수 있습니다.';
