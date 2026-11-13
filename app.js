@@ -12,16 +12,13 @@ const LS = 'wongo-';
 function lsGet(k, d){ try{ const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } }
 function lsSet(k, v){ try{ localStorage.setItem(LS + k, JSON.stringify(v)); }catch(e){} }
 function lsDel(k){ try{ localStorage.removeItem(LS + k); }catch(e){} }
-/* 옛 주소(zax-zac.github.io/Wongo)에서 옮겨 올 때: 주소 끝 #move=… 에 실려 온 그 기기의 설정을 받는다
-   (라이트닝 주소, 서식, 라이트닝에서 이미 받은 파일 표시). 이 기기에 이미 있는 값은 덮지 않는다 */
+/* 옛 주소(zax-zac.github.io/Wongo)에서 옮겨 올 때: 주소 끝 #move=… 에 실려 온 그 기기의 서식 설정을 받는다. 이 기기에 이미 있는 값은 덮지 않는다 */
 const moved = (() => {
   const m = location.hash.match(/^#move=([A-Za-z0-9_-]+)/);
   if(!m) return false;
   try{
     const j = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
-    if(j.lt && !lsGet('lt-url', '')) lsSet('lt-url', String(j.lt));
     if(j.prefs && typeof j.prefs === 'object' && lsGet('prefs', null) == null) lsSet('prefs', j.prefs);
-    if(j.seen && typeof j.seen === 'object') lsSet('lt-seen', Object.assign({}, j.seen, lsGet('lt-seen', {})));
   }catch(e){}
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
   return true;
@@ -284,15 +281,7 @@ async function restoreMs(id){
   setSave('saved', '휴지통에서 되살렸습니다');
   Drive.soon(1500);
 }
-/* 완전히 지운 원고는 '지운 원고 기록'에 남는다(id → 지운 때). 드라이브 동기화로 다른 기기와 라이트닝 페이지에 가서,
-   라이트닝은 그 원고의 보낸 파일과 브라우저 사본을 치우고, 앱의 받기는 지운 뒤에 보낸 판이 아니면 다시 들이지 않는다 */
-function markGone(ids){
-  const g = lsGet('gone', {}), now = Date.now();
-  for(const id of ids) g[id] = now;
-  lsSet('gone', g); lsSet('gone-up', now + Math.random());   // 올릴 기록이 있다는 표시. 올리는 사이에 또 지우면 값이 바뀌어 다음 동기화가 다시 올린다
-}
 async function purgeMs(ids){
-  markGone(ids);
   for(const id of ids) await DB.update(id, r => !r ? undefined : r.fileId ? Object.assign({}, r, {deleted: true, dirty: false}) : null);
   await refreshList();
   Drive.soon(500);
@@ -303,7 +292,6 @@ async function purgeOldTrash(){
   if(old.length) await purgeMs(old);
 }
 async function removeMs(id){
-  markGone([id]);
   await DB.update(id, r => !r ? undefined : r.fileId ? Object.assign({}, r, {deleted: true, dirty: false}) : null);
   if(cur && cur.id === id){ cur = null; dirty = false; }
   await refreshList();
@@ -315,6 +303,17 @@ async function removeMs(id){
 }
 
 const isBlank = r => !r.chars && (!r.title || r.title === '제목 없는 원고');
+/* 라이트닝 자료(조각·정리 위치·스토밍)를 기록에 쓴다. lightning.js가 부른다 */
+async function saveLt(id, lt){
+  if(!cur || cur.id !== id) return;
+  await flush();
+  const now = Date.now();
+  const r = await DB.update(id, x => x ? Object.assign({}, x, {lt: lt || null, updatedAt: now, dirty: true}) : undefined);
+  if(!r) return;
+  const m = list.find(x => x.id === id);
+  if(m){ Object.assign(m, {updatedAt: now, dirty: true}); renderList(); }
+  Drive.soon(4000);
+}
 /* 라이트닝 자료(조각·정리 위치·스토밍 개요)를 두 기기에서 따로 바꿨을 때:
    조각은 합치고, 정리 위치는 이 기기 것을, 스토밍 개요는 더 나중에 고친 쪽을 쓴다. 모르는 칸도 버리지 않는다 */
 function mergeLt(a, b){
@@ -450,7 +449,7 @@ paper.addEventListener('input', e => {
       if(!pr.innerText.trim()) pr.classList.remove('chap'); else b.classList.remove('chap');
     }
   }
-  // 라이트닝 페이지에서 번개로 나온 문장(점선 밑줄)은 작가가 고쳐 쓰면 밑줄이 사라진다
+  // 번개로 나온 문장(점선 밑줄)은 작가가 고쳐 쓰면 밑줄이 사라진다
   const sel = getSelection(), an = sel.rangeCount && sel.anchorNode, el = an && (an.nodeType === 1 ? an : an.parentNode);
   const sp = el && el.closest && el.closest('.lt-new');
   if(sp && paper.contains(sp)){ sp.classList.remove('lt-new'); if(!sp.className) sp.removeAttribute('class'); }
@@ -859,45 +858,6 @@ const Drive = (() => {
   }
   const safeName = t => (t || '제목 없는 원고').replace(/[\\/]/g, ' ').slice(0, 120);
 
-  /* ---- 지운 원고 기록: 동기화 자료 폴더의 「지운 원고 기록」 한 파일 ----
-     이름이 .json으로 끝나지 않아 라이트닝 목록에 원고로 섞이지 않는다. 내용은 {app:'wongo', kind:'gone', v:1, ids:{원고 id: 지운 때}}.
-     여러 기기의 기록을 합치고, 다시 살아난 원고(드라이브에 파일이 있거나 이 기기에 있는 원고)와 400일 지난 기록은 뺀다 */
-  const GONE_NAME = '지운 원고 기록', GONE_DAYS = 400;
-  function goneMerge(){
-    const cut = Date.now() - GONE_DAYS * 86400000, out = {};
-    for(const s of arguments) for(const [k, t] of Object.entries(s || {})) if(typeof t === 'number' && t > cut) out[k] = Math.max(out[k] || 0, t);
-    return out;
-  }
-  const goneIds = j => j && typeof j === 'object' && j.kind === 'gone' && j.ids && typeof j.ids === 'object' ? j.ids : {};
-  const sameMap = (a, b) => { const ka = Object.keys(a); return ka.length === Object.keys(b).length && ka.every(k => a[k] === b[k]); };
-  async function syncGone(data, remote){
-    const upAt = lsGet('gone-up', false);
-    const files = await find("'" + data + "' in parents and trashed=false and appProperties has { key='kind' and value='gone' }", 'id,version');
-    const rev = files.map(f => f.id + ':' + f.version).join(',');
-    const alive = new Set([...remote.keys(), ...(await DB.all()).filter(r => !r.deleted).map(r => r.id)]);
-    // 올릴 것도, 드라이브에서 바뀐 것도, 기록에 있는데 다시 살아난 원고도 없으면 그냥 넘어간다
-    if(!upAt && rev === lsGet('gone-rev', '') && !Object.keys(lsGet('gone', {})).some(id => alive.has(id))) return;
-    let rem = {};
-    for(const f of files){
-      try{ const raw = await api('/drive/v3/files/' + f.id + '?alt=media'); rem = goneMerge(rem, goneIds(typeof raw === 'string' ? JSON.parse(raw) : raw)); }
-      catch(e){ if(e && e.code && e.code !== 'notfound') throw e; }
-    }
-    const merged = goneMerge(rem, lsGet('gone', {}));
-    for(const id of Object.keys(merged)) if(alive.has(id)) delete merged[id];
-    lsSet('gone', merged);
-    let done = rev;
-    if(files.length > 1 || !sameMap(merged, rem)){
-      const body = JSON.stringify({app: 'wongo', kind: 'gone', v: 1, ids: merged});
-      const res = files.length
-        ? await upload(files[0].id, {name: GONE_NAME}, body, 'application/json')
-        : Object.keys(merged).length ? await upload(null, {name: GONE_NAME, parents: [data], mimeType: 'application/json', appProperties: {kind: 'gone'}}, body, 'application/json') : null;
-      for(const f of files.slice(1)){ try{ await api('/drive/v3/files/' + f.id + '?fields=id', {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({trashed: true})}); }catch(e){ if(e.code !== 'notfound') throw e; } }
-      done = res ? res.id + ':' + res.version : '';
-    }
-    lsSet('gone-rev', done);
-    if(lsGet('gone-up', false) === upAt) lsSet('gone-up', false);
-  }
-
   async function sync(){
     if(!CID || !wanted) return render();
     if(running){ again = true; return; }
@@ -926,9 +886,9 @@ const Drive = (() => {
         const d = typeof raw === 'string' ? JSON.parse(raw) : raw;
         let outcome = null;
         await DB.update(id, r => {
-          if(!r){ outcome = 'added'; return {id, title: d.title || '', html: d.html || '', chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, sentLt: d.sentLt || null, ltGot: d.ltGot || null, dirty: false, fileId: f.id, rev: f.version}; }
+          if(!r){ outcome = 'added'; return {id, title: d.title || '', html: d.html || '', chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, dirty: false, fileId: f.id, rev: f.version}; }
           if(r.deleted) return undefined;
-          if(!r.dirty){ outcome = 'updated'; return Object.assign({}, r, {title: d.title, html: d.html, chars: d.chars, updatedAt: d.updatedAt, trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, sentLt: d.sentLt || null, ltGot: Math.max(r.ltGot || 0, d.ltGot || 0) || null, dirty: false, fileId: f.id, rev: f.version}); }
+          if(!r.dirty){ outcome = 'updated'; return Object.assign({}, r, {title: d.title, html: d.html, chars: d.chars, updatedAt: d.updatedAt, trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, dirty: false, fileId: f.id, rev: f.version}); }
           if(r.html === d.html && r.title === d.title && !!r.trashed === !!d.trashed){ const lt = mergeLt(r.lt, d.lt); return Object.assign({}, r, {lt, dirty: JSON.stringify(lt) !== JSON.stringify(d.lt || null), fileId: f.id, rev: f.version}); }
           outcome = 'conflict'; return Object.assign({}, r, {fileId: f.id, rev: f.version});
         });
@@ -951,7 +911,7 @@ const Drive = (() => {
       for(const l of await DB.all()){
         if(l.deleted || !l.dirty) continue;
         if(!l.fileId && isBlank(l)) continue;  // 아무것도 쓰지 않은 새 원고는 올리지 않음
-        const body = JSON.stringify({app: 'wongo', v: 1, id: l.id, title: l.title, html: l.html, chars: l.chars, updatedAt: l.updatedAt, trashed: !!l.trashed, trashedAt: l.trashedAt || null, lt: l.lt || null, sentLt: l.sentLt || null, ltGot: l.ltGot || null});
+        const body = JSON.stringify({app: 'wongo', v: 1, id: l.id, title: l.title, html: l.html, chars: l.chars, updatedAt: l.updatedAt, trashed: !!l.trashed, trashedAt: l.trashedAt || null, lt: l.lt || null});
         const create = {name: safeName(l.title).replace(/[\[\]]/g, ' ') + ' [' + l.id + '].json', parents: [data], mimeType: 'application/json', appProperties: {kind: 'ms', wpId: l.id}};
         let res;
         if(l.fileId){
@@ -960,8 +920,6 @@ const Drive = (() => {
         } else res = await upload(null, create, body, 'application/json');
         await DB.update(l.id, r => r ? Object.assign({}, r, {fileId: res.id, rev: res.version, dirty: r.updatedAt !== l.updatedAt}) : undefined);
       }
-      // 5. 지운 원고 기록 맞추기
-      await syncGone(data, remote);
       lastSync = Date.now(); st = 'ok';
     }catch(e){
       if(e.code === 'notfound') folders = null;
@@ -972,6 +930,7 @@ const Drive = (() => {
       if(ch.added.size || ch.updated.size || ch.removed.size || ch.conflicts.length) await onRemote(ch);
       else await refreshList();
       render();
+      document.dispatchEvent(new Event('wongo:synced'));   // lightning.js가 지금 원고의 라이트닝 자료를 다시 읽는다
       if(again){ again = false; soon(500); }
     }
   }
@@ -1068,7 +1027,7 @@ const Drive = (() => {
   document.addEventListener('keydown', e => { if(e.key === 'Escape' && !dlg.hidden){ closePick(); e.stopPropagation(); } }, true);
   $('#opDrive').onclick = () => setTimeout(pick, 0);
   if(!CID) $('#opDrive').hidden = true;
-  /* 읽기 전용 권한: 한 시간 동안 이 기기에 기억해 두고, 그동안은 라이트닝 원고를 저절로 받는다 */
+  /* 읽기 전용 권한: 한 시간 동안 이 기기에 기억해 둔다 */
   async function roAsk(){
     if(roOk()) return true;
     try{ ro = await requestToken(READ_SCOPE); lsSet('ro', ro); return true; }
@@ -1077,112 +1036,6 @@ const Drive = (() => {
       return false;
     }
   }
-
-  /* ---- 라이트닝에서 받기 ----
-     claude.ai의 라이트닝 페이지는 원고를 'MYWONGO/라이트닝 보낸 원고' 폴더에 원고마다 한 파일로 올린다.
-     그 파일의 base(라이트닝이 원고를 열 때의 앱 원고 시각)와 chain(라이트닝이 앞서 보낸 판들의 시각)으로
-     '앱이 그 뒤로 이 원고를 고쳤는지'를 가린다. 안 고쳤으면 내용을 바꾸고, 고쳤으면 「… (라이트닝 사본)」으로 따로 남긴다.
-     받은 원고는 평소처럼 드라이브 동기화로 다른 기기에도 간다. */
-  const LT_DIR = '라이트닝 보낸 원고';
-  let recvBusy = false;
-  async function roList(q, fields){
-    const out = []; let page = '';
-    for(let i = 0; i < 10; i++){
-      const r = await (await roFetch('/drive/v3/files?q=' + enc(q) + '&fields=' + enc('nextPageToken,files(' + fields + ')') + '&pageSize=200&spaces=drive' + (page ? '&pageToken=' + enc(page) : ''))).json();
-      out.push(...(r.files || [])); page = r.nextPageToken || ''; if(!page) break;
-    }
-    return out;
-  }
-  /* 드라이브의 지운 원고 기록을 읽어 이 기기의 기록에 합친다. 아직 동기화를 한 번도 안 한 기기에서도 지운 원고를 되살리지 않으려고 */
-  async function roGone(){
-    try{
-      const fs = await roList("appProperties has { key='kind' and value='gone' } and trashed=false", 'id,modifiedTime');
-      const rev = fs.map(f => f.id + ':' + f.modifiedTime).join(',');
-      if(fs.length && rev !== lsGet('gone-ro', '')){
-        let add = {};
-        for(const f of fs) add = goneMerge(add, goneIds(await (await roFetch('/drive/v3/files/' + f.id + '?alt=media')).json()));
-        lsSet('gone', goneMerge(lsGet('gone', {}), add)); lsSet('gone-ro', rev);
-      }
-    }catch(e){ if(e && (e.code === 'auth' || e.code === 'network')) throw e; }
-    return lsGet('gone', {});
-  }
-  async function receive(auto){
-    if(recvBusy) return;
-    if(!CID){ if(!auto) toast('구글 드라이브 설정이 아직 되어 있지 않습니다.'); return; }
-    if(navigator.onLine === false){ if(!auto) toast('인터넷에 연결된 뒤 받을 수 있습니다.'); return; }
-    if(!roOk()){ if(auto || !(await roAsk())) return; }
-    recvBusy = true;
-    try{
-      const fq = "mimeType='application/vnd.google-apps.folder' and trashed=false and name=";
-      let dir = null;
-      for(const r of await roList(fq + "'" + ROOT + "'", 'id')){
-        const d = await roList(fq + "'" + LT_DIR + "' and '" + r.id + "' in parents", 'id');
-        if(d.length){ dir = d[0].id; break; }
-      }
-      if(!dir){ if(!auto) toast('라이트닝에서 보낸 원고가 아직 없습니다.', 4000); return; }
-      const seen = lsGet('lt-seen', {});
-      const files = (await roList("'" + dir + "' in parents and trashed=false", 'id,name,modifiedTime'))
-        .filter(f => seen[f.id] !== f.modifiedTime).sort((a, b) => a.modifiedTime < b.modifiedTime ? -1 : 1);
-      if(!files.length){ if(!auto) toast('새로 받을 원고가 없습니다.', 3000); return; }
-      const gone = await roGone();
-      await flush();
-      const ch = {updated: new Set(), removed: new Set(), added: new Set(), conflicts: []};
-      const got = [], copies = [];
-      for(const f of files){
-        let d = null;
-        try{ d = await (await roFetch('/drive/v3/files/' + f.id + '?alt=media')).json(); }
-        catch(e){ if(e && e.code) throw e; }
-        seen[f.id] = f.modifiedTime;
-        if(!d || d.app !== 'wongo' || !d.id || typeof d.html !== 'string') continue;
-        const title = d.title || '제목 없는 원고';
-        const fields = {title, html: d.html, chars: d.chars || 0, updatedAt: d.updatedAt || Date.now(), trashed: false, trashedAt: null};
-        const chain = Array.isArray(d.chain) ? d.chain : [];
-        let outcome = null, gotId = d.id;
-        // ltGot = 이 원고가 라이트닝에서 마지막으로 받은 판의 시각. 드라이브로 다른 기기에도 따라가서, 이미 받은 판을 다시 받지 않는다
-        const got1 = d.updatedAt || 0;
-        // 앱에서 완전히 지운 원고: 지운 뒤에 라이트닝에서 새로 보낸 판이 아니면 다시 들이지 않는다
-        const goneT = gone[d.id] || 0, wasGone = goneT && got1 <= goneT;
-        await DB.update(d.id, r => {
-          if(!r){ if(wasGone){ outcome = 'gone'; return undefined; } outcome = 'added'; return Object.assign({id: d.id, lt: d.lt || null, dirty: true, fileId: null, rev: null, ltGot: got1}, fields); }
-          if(r.deleted){ outcome = wasGone ? 'gone' : 'copy'; return undefined; }
-          if(r.ltGot && got1 <= r.ltGot){ outcome = 'same'; return undefined; }
-          if(r.html === d.html && r.title === title && !r.trashed){
-            outcome = 'same';
-            const lt = mergeLt(d.lt, r.lt);
-            const g = Math.max(r.ltGot || 0, got1), ltSame = JSON.stringify(lt) === JSON.stringify(r.lt || null);
-            if(ltSame && g === r.ltGot) return undefined;
-            return Object.assign({}, r, {lt, ltGot: g}, ltSame ? {} : {dirty: true});   // 받은 판 표시만 바뀌면 올리지 않고, 다음에 올릴 때 함께 간다
-          }
-          if((r.updatedAt || 0) <= (d.base || 0) || chain.includes(r.updatedAt)){ outcome = 'updated'; return Object.assign({}, r, fields, {lt: d.lt || r.lt || null, ltGot: got1, dirty: true}); }
-          outcome = 'copy'; return undefined;
-        });
-        if(outcome === 'added'){ ch.added.add(d.id); got.push(title); }
-        else if(outcome === 'updated'){ ch.updated.add(d.id); got.push(title); }
-        else if(outcome === 'copy'){
-          gotId = newId();
-          await DB.put(Object.assign({id: gotId, lt: d.lt || null, dirty: true, fileId: null, rev: null}, fields, {title: title + ' (라이트닝 사본)'}));
-          ch.added.add(gotId); copies.push(title);
-        }
-        if(outcome !== 'same' && outcome !== 'gone') ch.last = gotId;
-      }
-      lsSet('lt-seen', seen);
-      if(ch.added.size || ch.updated.size){
-        await onRemote(ch);
-        if(cur && ch.updated.has(cur.id)) setSave('saved', '라이트닝에서 받았습니다');
-        let msg = got.length ? '라이트닝에서 「' + got.join('」, 「') + '」을(를) 받았습니다.' : '';
-        if(copies.length) msg += (msg ? ' ' : '') + '「' + copies.join('」, 「') + '」은(는) 앱에서도 따로 고친 데가 있어서, 라이트닝 쪽 내용을 「… (라이트닝 사본)」으로 따로 남겼습니다.';
-        const target = ch.last;
-        if(target && (!cur || cur.id !== target)) notice(msg, '열기', () => { $('#notice').hidden = true; openMs(target); });
-        else notice(msg);
-        soon(800);
-      } else if(!auto) toast('새로 받을 원고가 없습니다.', 3000);
-    }catch(e){
-      if(!auto) toast(e.code === 'network' ? '인터넷에 연결되어 있지 않습니다.' : e.code === 'auth' ? '드라이브 읽기 권한이 만료되었습니다. 다시 눌러 주세요.' : '라이트닝 원고를 받지 못했습니다.', 6000);
-    }finally{ recvBusy = false; }
-  }
-  $('#opLt').onclick = () => setTimeout(() => receive(false), 0);
-  if(!CID) $('#opLt').hidden = true;
-  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && roOk()) receive(true); });
 
   function errorText(e){
     const c = e && e.code;
@@ -1228,7 +1081,7 @@ const Drive = (() => {
   };
   window.addEventListener('online', () => soon(300));
   window.addEventListener('offline', () => { if(wanted){ st = 'offline'; render(); } });
-  setInterval(() => { if(document.visibilityState === 'visible' && wanted && tokenOk()) sync(); if(document.visibilityState === 'visible' && roOk()) receive(true); }, 60000);
+  setInterval(() => { if(document.visibilityState === 'visible' && wanted && tokenOk()) sync(); }, 60000);
   setInterval(() => { if(wanted && st === 'ok' && !tokenOk()){ st = 'expired'; render(); } if(st === 'error') soon(0); }, 30000);
 
   return {
@@ -1238,109 +1091,10 @@ const Drive = (() => {
       render();
       if(CID && navigator.onLine !== false) loadGis().catch(() => {});  // 로그인 창이 막히지 않도록 미리 불러 둠
       if(CID && wanted) sync();
-      if(CID && roOk()) setTimeout(() => receive(true), 2000);
     },
-    soon, sync, saveHwpx, errorText, render, receive
+    soon, sync, saveHwpx, errorText, render
   };
 })();
-
-/* ---------- 레이닝: 이 원고를 라이트닝 페이지로 보낸다 ----------
-   지금 바로 드라이브에 올리고 '보냄' 표시를 남긴다. 라이트닝 페이지는 이 원고를 열거나 그 페이지로 돌아올 때 이 판을 받는다.
-   최종본은 라이트닝 페이지에서 다듬고, 앱은 '라이트닝에서 받기'로 그것을 받아 본다. */
-/* ---------- 레이닝: 지금 원고를 라이트닝 페이지로 보낸다 ----------
-   동기화 파일에 sentLt(보낸 때)를 붙여 올린다. 라이트닝 페이지는 앱이 가장 최근에 보낸 원고를 알아보고 연다. */
-let rainBusy = false;
-async function rain(opened){
-  if(!cur || rainBusy) return;
-  const btn = opened ? '#ltOpenBtn' : '#rainBtn';
-  if(!Drive.enabled()){
-    toast(navigator.onLine === false ? '인터넷에 연결된 뒤 보낼 수 있습니다.' + (opened ? ' 라이트닝 페이지만 열었습니다.' : '')
-      : '구글 드라이브에 연결해야 라이트닝 페이지로 보낼 수 있습니다. 원고 목록 아래에서 드라이브를 연결해 주세요.' + (opened ? ' 라이트닝 페이지만 열었습니다.' : ''), 8000);
-    if(narrow() && !opened) drawer(true);
-    return;
-  }
-  rainBusy = true; $(btn).setAttribute('aria-busy', 'true');
-  try{
-    await flush();
-    await DB.update(cur.id, r => r ? Object.assign({}, r, {sentLt: Date.now(), dirty: true}) : undefined);
-    await Drive.sync();
-    const st = Drive.state();
-    if(st === 'ok') toast(opened ? '「' + titleVal() + '」을(를) 보냈습니다. 라이트닝 페이지가 이 원고를 엽니다.' : '「' + titleVal() + '」을(를) 라이트닝 페이지로 보냈습니다. 라이트닝 페이지를 열면 이 판을 받아 이어서 작업합니다.', 7000);
-    else toast(st === 'expired' ? '드라이브 연결이 만료되었습니다. 다시 연결한 뒤 ' + (opened ? '라이트닝' : '레이닝') + '을 눌러 주세요.' : '보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.', 8000);
-  }finally{ rainBusy = false; $(btn).removeAttribute('aria-busy'); }
-}
-$('#rainBtn').onclick = () => rain(false);
-/* ---------- 라이트닝: 지금 원고를 보내고 claude.ai의 내 라이트닝 페이지를 연다 ----------
-   라이트닝 페이지는 사람마다(claude.ai 계정마다) 따로 있어서, 주소는 기기마다 처음 한 번 넣어 이 기기에 둔다.
-   창은 누른 그 순간에 연다(팝업 차단을 피하려고). 같은 이름의 창이 있으면 그 창을 쓴다. 보내기는 그동안 이어서 한다 */
-const ltUrl = () => lsGet('lt-url', '');
-function normLtUrl(v){
-  v = String(v || '').trim().replace(/^<|>$/g, '');
-  if(!v) return '';
-  if(!/^https?:\/\//i.test(v)) v = 'https://' + v;
-  let u; try{ u = new URL(v); }catch(e){ return null; }
-  if(u.protocol !== 'https:' || !/(^|\.)claude\.ai$/i.test(u.hostname) || !/\/artifact\/[A-Za-z0-9_-]+/.test(u.pathname)) return null;
-  return u.origin + u.pathname;
-}
-/* 크롬에서 열기(휴대폰·태블릿): 웹 앱은 링크를 열 브라우저를 고를 수 없어서, 안드로이드는 intent 주소로, 아이폰·아이패드는 크롬의 googlechromes:// 주소로 크롬을 콕 집어 연다.
-   컴퓨터에서는 고를 방법이 없어 설정을 보이지 않는다. 크롬이 안 열리면(깔려 있지 않으면) 기본 브라우저로 여는 단추를 보인다 */
-const UA = navigator.userAgent || '';
-const IS_ANDROID = /Android/i.test(UA);
-const IS_IOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-// 안드로이드는 뺐다: 크롬으로 만든 앱 안에서 크롬을 부르면 크롬이 자기 앱 안의 링크로 처리해 다시 기본 브라우저로 열렸다(작가 확인, 두 방식 모두). 안드로이드는 기본 브라우저를 크롬으로 바꾸면 된다
-const ltChrome = () => IS_IOS && !!lsGet('lt-chrome', false);
-/* 안드로이드: https 주소를 크롬 앞으로 보내도(scheme=https;package=크롬) 앱을 띄운 브라우저(삼성 인터넷 등)가 스스로 열어 버릴 수 있다.
-   그래서 크롬만 받는 googlechrome://navigate?url= 주소를 크롬 앞으로 보낸다. 크롬은 url 뒤를 그대로 쓰므로 인코딩하지 않는다 */
-function chromeUrl(url){
-  return IS_ANDROID ? 'intent://navigate?url=' + url + '#Intent;scheme=googlechrome;package=com.android.chrome;end'
-    : 'googlechromes://' + url.replace(/^https:\/\//, '');
-}
-let chromeT = null;
-const CHROME_MISS = '크롬이 열리지 않으면 크롬이 깔려 있는지 확인해 주세요. 지금은 기본 브라우저로 열 수 있습니다.';
-document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState !== 'hidden') return;
-  clearTimeout(chromeT);   // 크롬으로 넘어갔다
-  if($('#noticeText').textContent === CHROME_MISS) $('#notice').hidden = true;
-});
-function openLightning(){
-  const url = ltUrl();
-  if(!url){ ltAddr(true); return; }
-  if(navigator.onLine === false){ toast('인터넷에 연결된 뒤 라이트닝 페이지를 열 수 있습니다.', 6000); return; }
-  if(ltChrome()){
-    location.href = chromeUrl(url);
-    clearTimeout(chromeT);
-    chromeT = setTimeout(() => {
-      if(document.visibilityState === 'visible') notice(CHROME_MISS, '기본 브라우저로 열기', () => { $('#notice').hidden = true; window.open(url, 'mywongo-lightning'); });
-    }, 3000);
-  } else window.open(url, 'mywongo-lightning');
-  rain(true);
-}
-let ltAddrThenOpen = false;
-function ltAddr(thenOpen){
-  ltAddrThenOpen = !!thenOpen;
-  $('#ltAddrIn').value = ltUrl();
-  $('#ltAddrSave').textContent = thenOpen ? '저장하고 열기' : '저장';
-  $('#ltChromeRow').hidden = !IS_IOS;
-  $('#ltChrome').checked = ltChrome();
-  const m = $('#ltAddrMsg'); m.classList.remove('err'); m.textContent = '이 기기에만 저장합니다. 컴퓨터·휴대폰·태블릿마다 한 번씩 넣어 주세요.';
-  $('#ltAddrDlg').hidden = false;
-  setTimeout(() => $('#ltAddrIn').focus(), 0);
-}
-const ltAddrClose = () => { $('#ltAddrDlg').hidden = true; };
-$('#ltAddrBox').onsubmit = e => {
-  e.preventDefault();
-  const raw = $('#ltAddrIn').value, url = normLtUrl(raw), m = $('#ltAddrMsg');
-  if(url === ''){ lsDel('lt-url'); ltAddrClose(); toast('라이트닝 주소를 지웠습니다.', 4000); return; }
-  if(!url){ m.classList.add('err'); m.textContent = 'claude.ai의 라이트닝 페이지 주소가 아닙니다. 주소는 https://claude.ai/artifact/… 꼴입니다.'; return; }
-  lsSet('lt-url', url); ltAddrClose();
-  if(ltAddrThenOpen) openLightning(); else toast('라이트닝 주소를 저장했습니다.', 4000);
-};
-$('#ltAddrClose').onclick = ltAddrClose;
-$('#ltChrome').onchange = () => { lsSet('lt-chrome', $('#ltChrome').checked); toast($('#ltChrome').checked ? '이 기기에서는 라이트닝 페이지를 크롬으로 엽니다.' : '이 기기에서는 라이트닝 페이지를 기본 브라우저로 엽니다.', 4000); };
-$('#ltAddrDlg').addEventListener('click', e => { if(e.target === $('#ltAddrDlg')) ltAddrClose(); });
-$('#ltAddrDlg').addEventListener('keydown', e => { if(e.key === 'Escape'){ e.stopPropagation(); ltAddrClose(); } });
-$('#ltAddrBtn').onclick = () => { if(narrow()) drawer(false); ltAddr(false); };
-$('#ltOpenBtn').onclick = openLightning;
 
 /* ---------- 말풍선: 아이콘에 마우스를 올리면 이름과 하는 일을 보여 준다 ----------
    title로 적어 둔 이름은 말풍선으로 옮긴다(브라우저 기본 말풍선과 겹치지 않게). 휴대폰에서는 뜨지 않는다. */
@@ -1391,7 +1145,7 @@ $('#installBtn').onclick = async () => { if(!installEvt) return; installEvt.prom
 window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; });
 
 /* ---------- 시작 ---------- */
-window.__wongo = {paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, toast, outline, refreshList, prefs, savePrefs, narrow, closePops, chapRe, sceneRe, numRe};
+window.__wongo = {paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, toast, outline, refreshList, prefs, savePrefs, narrow, closePops, chapRe, sceneRe, numRe, saveLt, mergeLt};
 (async function boot(){
   applyPrefs();
   if(narrow()) drawer(false);
