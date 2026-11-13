@@ -20,7 +20,8 @@
   --chrome:#f4f5f7; --hover:#e8ecf1; --accent:#2c4a6e; --accent-ink:#ffffff; --warn:#a4462b; --ok:#3d6b4a;
   --t-del:#a4462b; --t-del-bg:rgba(164,70,43,.11); --t-ins:#2e6a44; --t-ins-bg:rgba(46,120,72,.13); --t-memo:#56606c; --t-memo-bg:rgba(86,96,108,.12); --t-mat:#865710; --t-mat-bg:rgba(196,138,36,.17);
   --serif:'KoPub Batang','KoPubBatang Light','KoPub바탕체 Light','Noto Serif KR',serif;
-  --ui:'Noto Sans KR',system-ui,-apple-system,sans-serif;
+  /* 본문을 뺀 모든 글꼴: 윈도는 맑은 고딕, 애플 기기는 산돌고딕 Neo, 그 밖(안드로이드)은 Noto Sans KR(본고딕) */
+  --ui:'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo','Noto Sans KR',system-ui,-apple-system,sans-serif;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){
@@ -35,7 +36,7 @@
 [hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body{background:var(--paper);color:var(--ink);font-family:var(--ui);font-size:14px;overflow:hidden;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-button,select,input{font:inherit;color:inherit}
+button,select,input,textarea{font:inherit;color:inherit}
 button{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;white-space:nowrap;line-height:1.4}
 button:hover{background:var(--hover)}
 button:disabled{opacity:.5;cursor:default}
@@ -249,7 +250,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 /* build */
 .range{margin:0 0 14px;padding:12px 14px;border-radius:8px;background:var(--chrome);border:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
 .range .w{font-size:12.5px;color:var(--muted)}
-.range .q{font-family:var(--serif);font-size:15px;line-height:1.6;word-break:keep-all}
+.range .q{font-family:var(--ui);font-size:15px;line-height:1.6;word-break:keep-all}
 .range .n{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 #tidyWait{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px}
 #tidyWait b{font-weight:500;color:var(--accent)}
@@ -260,7 +261,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .chip.k-memo::before{background:var(--t-memo)} .chip.k-mat::before{background:var(--t-mat)}
 .chip[aria-pressed="false"]::before{background:transparent;box-shadow:inset 0 0 0 1.5px var(--muted)}
 #tidyReview > .hint{margin:8px 2px 12px}
-.doc{font-family:var(--serif);font-size:15.5px;line-height:2.05;text-align:left;overflow-wrap:break-word}
+.doc{font-family:var(--ui);font-size:15.5px;line-height:2.05;text-align:left;overflow-wrap:break-word}
 .doc p{margin:0 0 .9em;text-indent:1em}
 .doc p.sep{text-align:center;text-indent:0;color:var(--muted)}
 .x{cursor:pointer;border-radius:3px;padding:1px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
@@ -288,14 +289,14 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .f{border:1px solid var(--line);border-radius:9px;padding:10px 12px}
 .fk{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
 .fk span{font-size:11.5px;padding:1px 8px;border-radius:9px;background:var(--t-mat-bg);color:var(--t-mat)}
-.ft{margin:0;font-family:var(--serif);font-size:14.5px;line-height:1.75;white-space:pre-wrap}
+.ft{margin:0;font-family:var(--ui);font-size:14.5px;line-height:1.75;white-space:pre-wrap}
 .fm{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;font-size:11.5px;color:var(--muted)}
 .fdel{font-size:12px;padding:2px 8px;color:var(--muted)}
 .fdel.arm{color:var(--warn);font-weight:500}
 /* 스토밍 */
 #stormDlg .sheet-box{width:min(720px,100%)}
 .st-in > summary,.st-hist > summary{cursor:pointer;font-size:13px;font-weight:600;padding:4px 0}
-#stBrain{width:100%;min-height:150px;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-family:var(--serif);font-size:15px;line-height:1.75;resize:vertical;margin-top:8px}
+#stBrain{width:100%;min-height:150px;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-family:var(--ui);font-size:15px;line-height:1.75;resize:vertical;margin-top:8px}
 .st-opts{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:10px 0;font-size:13px;color:var(--muted)}
 .st-opts label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
 .st-opts input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;margin:0}
@@ -318,7 +319,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .st-card{border:1px solid var(--line);border-radius:10px;padding:8px 12px 10px;margin:0 0 10px}
 .st-card h3,.st-rv h3{margin:0 0 2px;font-size:12px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:8px}
 .st-card h3 .sp,.st-rv h3 .sp{flex:1}
-.st-ta{width:calc(100% + 12px);border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);font-family:var(--serif);font-size:15px;line-height:1.75;padding:3px 6px;margin:0 -6px;resize:none;overflow:hidden;display:block}
+.st-ta{width:calc(100% + 12px);border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);font-family:var(--ui);font-size:15px;line-height:1.75;padding:3px 6px;margin:0 -6px;resize:none;overflow:hidden;display:block}
 .st-ta.ui{font-family:var(--ui);font-size:14px;line-height:1.65}
 .st-ta:hover{border-color:var(--line)}
 .st-ta:focus{border-color:var(--accent);background:var(--paper);outline:none}
@@ -332,7 +333,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .st-nm{font-weight:600;font-size:14px}
 .st-w{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .st-here{font-size:11px;color:var(--accent-ink);background:var(--accent);border-radius:9px;padding:0 7px;margin-left:6px;vertical-align:1px}
-.st-t{grid-column:1 / -1;font-family:var(--serif);font-size:14.5px;line-height:1.6;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-t{grid-column:1 / -1;font-family:var(--ui);font-size:14.5px;line-height:1.6;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .st-t:empty::before{content:"비어 있음";color:var(--muted)}
 .st-ph[open] .st-t{display:none}
 .pin{font-size:11.5px;padding:1px 9px;border-radius:9px;line-height:1.6}
@@ -376,6 +377,10 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .tl-meta input{width:9em}
 .tl-btns{margin-left:auto;display:flex;gap:2px}
 .tl-meta button{font-size:12px;padding:2px 8px;color:var(--muted)}
+/* 창 안의 글과 입력 칸도 본문처럼 양쪽 정렬, 줄 바꿈은 본문 서식(글자/낱말)을 따른다 */
+.sheet-body p:not(.sep), .sheet-body li, .range .q, .doc p:not(.sep), .ft, .st-people, .st-def,
+#note, #stBrain, .st-ta, .tl textarea, #stCT span, #stProg {
+  text-align:justify;word-break:var(--wb,normal);overflow-wrap:break-word}
 /* 설정: 펼쳤다 접었다 */
 .set-sec{border:1px solid var(--line);border-radius:10px;margin:0 0 10px}
 .set-sec > summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;cursor:pointer;list-style:none;padding:12px 14px;font-weight:600;font-size:14px}
@@ -398,10 +403,11 @@ button.danger:disabled{opacity:.4}
 .ai-body h3 .hint{font-weight:400}
 .ai-body p{margin:6px 0;line-height:1.6;font-size:13.5px}
 .ai-state{color:var(--accent);font-weight:500}
-.ai-steps{margin:0 0 8px;padding-left:1.3em;font-size:13px;line-height:1.7}
+.sheet .ai-steps{margin:4px 0 10px;padding-left:2.4em;font-size:13px;line-height:1.7}
+.ai-steps li{padding-left:.3em;margin-bottom:2px}
 .ai-steps a{color:var(--accent)}
 .ai-key{display:flex;gap:6px;align-items:center}
-#aiKey{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--paper);font-size:14px;font-family:ui-monospace,Menlo,Consolas,monospace}
+#aiKey{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--paper);font-size:14px;font-family:var(--ui)}
 .ai-msg{min-height:1.4em;margin-top:6px!important}
 .ai-msg.err{color:var(--warn)}
 #aiModel{width:100%;max-width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--paper);font-size:13.5px}

@@ -36,6 +36,7 @@ function applyPrefs(){
   paper.classList.toggle('indent', !!prefs.indent);
   paper.style.setProperty('--ls', (prefs.ls / 100) + 'em');
   paper.style.setProperty('--wb', prefs.wrap === 'word' ? 'keep-all' : 'normal');
+  document.documentElement.style.setProperty('--wb', prefs.wrap === 'word' ? 'keep-all' : 'normal');   // 스토밍·build·조각·설정 창도 본문과 같은 줄 바꿈
   app.classList.toggle('focus', !!prefs.focus);
   app.classList.toggle('side-off', !prefs.side);
 }
