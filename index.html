@@ -372,6 +372,14 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .tl-meta input{width:9em}
 .tl-btns{margin-left:auto;display:flex;gap:2px}
 .tl-meta button{font-size:12px;padding:2px 8px;color:var(--muted)}
+/* 이 기기 초기화 */
+.rs-warn{color:var(--warn);background:var(--t-del-bg);border-radius:8px;padding:10px 12px;line-height:1.6}
+.rs-warn button{margin-top:6px}
+.rs-wipe{border:1px solid var(--warn);border-radius:8px;padding:10px 12px;margin:10px 0}
+.rs-wipe p{margin:6px 0 0}
+button.danger{background:var(--warn);color:#fff;border-color:var(--warn)}
+button.danger:disabled{opacity:.4}
+#rsType{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--paper);font-size:14px}
 /* 라이트닝 설정 */
 .ai-body h3{font-size:13px;font-weight:600;margin:18px 0 6px}
 .ai-body h3:first-of-type{margin-top:8px}
@@ -488,6 +496,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
           <button id="driveOffBtn" class="ghost" hidden>연결 끊기</button>
           <button id="installBtn" hidden>앱으로 설치</button>
           <button id="aiBtn" class="ghost">라이트닝 설정</button>
+          <button id="resetBtn" class="ghost">이 기기 초기화</button>
         </div>
       </div>
     </aside>
@@ -600,6 +609,27 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
     </div>
   </div>
 </div>
+<div id="resetDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="rsTitle">
+  <div class="sheet-box">
+    <header class="sheet-head"><h2 id="rsTitle">이 기기 초기화</h2><button id="rsClose" class="ghost" type="button">닫기</button></header>
+    <div class="sheet-body ai-body">
+      <p>이 기기(이 브라우저)에 있는 원고와 휴지통, 서식·라이트닝 설정을 모두 지우고 처음 상태로 되돌립니다.</p>
+      <p id="rsCount" class="ai-state"></p>
+      <p id="rsUnsent" class="rs-warn" hidden><span></span> <button id="rsBackup" type="button">모든 원고 백업 먼저</button></p>
+      <p class="hint">아래 「드라이브의 원고도 모두 지우기」를 체크하지 않으면 드라이브 파일은 그대로 두고, 드라이브에 남은 원고는 다음 동기화 때 다시 받아 옵니다.</p>
+      <div id="rsWipeBox" class="rs-wipe"><label class="ai-chk"><input id="rsWipe" type="checkbox"> <b>드라이브의 원고도 모두 지우기</b></label>
+        <p class="hint">드라이브 LWRITE 폴더의 원고와 한글 파일을 모두 휴지통으로 옮깁니다(30일 안에는 드라이브 휴지통에서 되살릴 수 있음). 다른 기기도 다음에 열 때 그 원고들이 지워집니다. 완전히 처음부터 시작할 때 체크하세요.</p></div>
+      <p><label class="ai-chk"><input id="rsDrive" type="checkbox"> 드라이브 연결도 끊기</label></p>
+      <p><label class="ai-chk"><input id="rsAi" type="checkbox"> Gemini API 키도 지우기</label></p>
+      <h3>확인</h3>
+      <p class="hint">되돌릴 수 없습니다. 아래 칸에 <b>초기화</b>라고 적어야 지울 수 있습니다.</p>
+      <div class="ai-key"><input id="rsType" type="text" placeholder="초기화" autocomplete="off" aria-label="확인 문구"><button id="rsGo" type="button" class="danger" disabled>지우기</button></div>
+      <p id="rsMsg" class="hint ai-msg" aria-live="polite"></p>
+      <p><button id="rsNo" type="button" class="ghost">그만두기</button></p>
+    </div>
+  </div>
+</div>
+
 <div id="toast" role="status" hidden></div>
   <input id="fileIn" type="file" class="vh" tabindex="-1" aria-hidden="true">
 </div>

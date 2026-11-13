@@ -67,6 +67,7 @@ const DB = (() => {
     get: id => run('ms', 'readonly', (s, set) => { const q = s.get(id); q.onsuccess = () => set(q.result); }),
     put: rec => run('ms', 'readwrite', s => { s.put(rec); }),
     del: id => run('ms', 'readwrite', s => { s.delete(id); }),
+    clear: async () => { await run('ms', 'readwrite', s => { s.clear(); }); await run('kv', 'readwrite', s => { s.clear(); }); },
     /* 읽고-고치고-쓰기를 한 번에: fn이 null이면 지우고, undefined면 그대로 둔다 */
     update: (id, fn) => run('ms', 'readwrite', (s, set) => {
       const q = s.get(id);
@@ -77,7 +78,7 @@ const DB = (() => {
 if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 /* ---------- 상태 ---------- */
-let cur = null, list = [], dirty = false, saving = false, timer = null;
+let cur = null, list = [], dirty = false, saving = false, timer = null, resetting = false;
 const titleVal = () => $('#title').value.trim() || '제목 없는 원고';
 function setSave(state, msg){
   const el = $('#saveState');
@@ -195,7 +196,7 @@ function onEdit(){
   schedule(800);
 }
 async function flush(){
-  if(!cur || !dirty) return;
+  if(!cur || !dirty || resetting) return;
   if(saving){ schedule(300); return; }
   saving = true; dirty = false; clearTimeout(timer);
   const id = cur.id, html = paper.innerHTML, title = titleVal(), chars = countChars(), now = Date.now();
@@ -884,6 +885,7 @@ const Drive = (() => {
   const safeName = t => (t || '제목 없는 원고').replace(/[\\/]/g, ' ').slice(0, 120);
 
   async function sync(){
+    if(resetting) return;
     if(!CID || !wanted) return render();
     if(running){ again = true; return; }
     if(navigator.onLine === false){ st = 'offline'; return render(); }
@@ -1117,8 +1119,82 @@ const Drive = (() => {
       if(CID && navigator.onLine !== false) loadGis().catch(() => {});  // 로그인 창이 막히지 않도록 미리 불러 둠
       if(CID && wanted) sync();
     },
-    soon, sync, saveHwpx, errorText, render
+    soon, sync, saveHwpx, errorText, render, busy: () => running,
+    connected: () => !!CID && wanted && tokenOk(),
+    /* 드라이브의 원고(동기화 자료)와 이 앱이 만든 한글 파일을 모두 휴지통으로. 휴지통에서 30일 동안 되살릴 수 있다 */
+    async wipe(){
+      if(!tokenOk()) throw {code: 'auth'};
+      const {root, data} = await ensureFolders();
+      const fs = (await find("'" + data + "' in parents and trashed=false", 'id'))
+        .concat(await find("'" + root + "' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'", 'id'));
+      for(const f of fs){ try{ await patch(f.id, {trashed: true}); }catch(e){ if(e.code !== 'notfound') throw e; } }
+      folders = null;
+      return fs.length;
+    }
   };
+})();
+
+/* ---------- 이 기기 초기화: 이 기기의 원고와 설정만 지운다. 드라이브 파일은 건드리지 않는다 ----------
+   원고를 '지움' 표시하지 않고 저장소째 비우므로, 다음 동기화가 드라이브의 파일을 휴지통에 넣지 않는다 */
+const Reset = (() => {
+  const dlg = $('#resetDlg');
+  async function open(){
+    await flush();
+    const all = (await DB.all()).filter(r => !r.deleted);
+    const unsent = all.filter(r => r.dirty && !isBlank(r));
+    $('#rsCount').textContent = all.length ? '이 기기에 원고 ' + all.length + '편이 있습니다.' : '이 기기에 원고가 없습니다.';
+    const w = $('#rsUnsent');
+    w.hidden = !unsent.length;
+    if(unsent.length) w.querySelector('span').textContent = '이 가운데 ' + unsent.length + '편(' + unsent.slice(0, 3).map(r => '「' + (r.title || '제목 없는 원고') + '」').join(', ') + (unsent.length > 3 ? ' 외' : '') + ')은 아직 드라이브에 올라가지 않아, 초기화하면 다시 찾을 수 없습니다.';
+    $('#rsDrive').checked = false; $('#rsAi').checked = false; $('#rsWipe').checked = false;
+    $('#rsWipeBox').hidden = !Drive.connected();
+    $('#rsType').value = ''; $('#rsGo').disabled = true; $('#rsMsg').textContent = '';
+    dlg.hidden = false;
+    if(!narrow()) setTimeout(() => $('#rsType').focus(), 0);
+  }
+  const close = () => { dlg.hidden = true; };
+  async function go(){
+    if($('#rsType').value.trim() !== '초기화') return;
+    $('#rsGo').disabled = true; $('#rsMsg').textContent = '지우는 중…';
+    resetting = true; clearTimeout(timer); dirty = false;
+    // 동기화가 돌고 있으면 끝나기를 기다린다(그사이 원고를 다시 쓰지 않도록)
+    for(let i = 0; i < 100 && Drive.busy(); i++) await new Promise(r => setTimeout(r, 200));
+    const keepDrive = !$('#rsDrive').checked, keepAi = !$('#rsAi').checked, wipe = $('#rsWipe').checked && Drive.connected();
+    if(wipe){
+      $('#rsMsg').textContent = '드라이브의 원고를 휴지통으로 옮기는 중…';
+      try{ await Drive.wipe(); }
+      catch(e){
+        resetting = false; $('#rsGo').disabled = false;
+        $('#rsMsg').textContent = '드라이브를 비우지 못했습니다(' + (e && e.code === 'auth' ? '드라이브 연결이 끊겼습니다. 「드라이브 연결」 뒤 다시' : e && e.code === 'network' ? '인터넷 연결을 확인하고 다시' : '잠시 뒤 다시') + ' 해 주세요). 이 기기의 원고는 그대로입니다.';
+        return;
+      }
+    }
+    try{
+      await DB.clear();
+      const keep = new Set();
+      if(keepDrive) ['token', 'drive-on'].forEach(k => keep.add(LS + k));
+      if(keepAi) ['ai-key', 'ai-model', 'ai-models'].forEach(k => keep.add(LS + k));
+      const ks = []; for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && k.startsWith(LS) && !keep.has(k)) ks.push(k); }
+      ks.forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
+      try{ sessionStorage.clear(); }catch(e){}
+      lsSet('reset-done', wipe ? 2 : 1);
+      location.replace(location.pathname);
+    }catch(e){
+      resetting = false;
+      $('#rsMsg').textContent = '지우지 못했습니다. 브라우저 설정에서 이 사이트의 데이터를 지워 주세요.';
+    }
+  }
+  $('#resetBtn').onclick = () => { if(narrow()) $('#app').classList.remove('drawer'); open(); };
+  $('#rsClose').onclick = close; $('#rsNo').onclick = close;
+  dlg.addEventListener('click', e => { if(e.target === dlg) close(); });
+  $('#rsType').addEventListener('input', () => { $('#rsGo').disabled = $('#rsType').value.trim() !== '초기화'; });
+  $('#rsType').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.isComposing){ e.preventDefault(); go(); } if(e.key === 'Escape') close(); });
+  $('#rsGo').onclick = go;
+  $('#rsBackup').onclick = () => $('#exBackup').click();
+  // 초기화 직후 한 번 알린다
+  const done = lsGet('reset-done', 0);
+  if(done){ lsDel('reset-done'); setTimeout(() => toast(done === 2 ? '이 기기와 드라이브를 초기화했습니다. 다른 기기는 다음에 열 때 정리됩니다.' : '이 기기를 초기화했습니다.', 5000), 600); }
+  return {open};
 })();
 
 /* ---------- 말풍선: 아이콘에 마우스를 올리면 이름과 하는 일을 보여 준다 ----------

@@ -375,7 +375,7 @@ const SHEETS = ['tidyDlg', 'fragDlg', 'stormDlg', 'aiDlg'];
 const sheetOpen = () => SHEETS.find(id => !$('#' + id).hidden) || null;
 document.addEventListener('keydown', e => {
   if((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.isComposing){
-    if(sheetOpen() || !$('#drvDlg').hidden) return;
+    if(sheetOpen() || !$('#drvDlg').hidden || !$('#resetDlg').hidden) return;
     e.preventDefault(); e.stopPropagation(); bolt(); return;
   }
   if(e.key === 'Escape'){
