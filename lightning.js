@@ -59,6 +59,8 @@ window.addEventListener('pagehide', () => { if(ltT) saveLt(); });
 /* ================= 문장 나누기 · 비교 · 답 읽기 ================= */
 const OPEN = '“‘「『（(〈《[{', CLOSE = '”’」』）)〉》]}';
 const STOP = '.?!。？！', TERM = '.?!。？！…⋯';
+/* 마침표 없이도 끝난 문장으로 보는 맺음말: 초고는 마침표 없이 번개를 누르는 일이 많다 */
+const ENDED = /(다|요|까|죠|네|군|구나|자|냐|소서|니다|시오)$/
 const AFTER_Q = /^\s*(하고|하며|하면서|하는|하자|하니|하더니|하곤|하였다|했다|한다|하던|라고|라며|라는|라면서|이라고|이라며|고|며)(\s|$|[.,])/;
 function splitSents(text){
   const out = [], n = text.length;
@@ -226,15 +228,17 @@ function contextAt(b, r){
   const last = head.replace(/\s+$/, '').slice(-1);
   return {
     head, before, after: clip(after.join('\n'), 500), chap: chap && !prev.includes(chap) ? chap : '',
-    newPara: !head.trim(), mid: !!head.trim() && !TERM.includes(last) && !CLOSE.includes(last) && last !== '"' && last !== "'"
+    newPara: !head.trim(), mid: !!head.trim() && !TERM.includes(last) && !CLOSE.includes(last) && last !== '"' && last !== "'" && !ENDED.test(head.replace(/\s+$/, ''))
   };
 }
 function boltPrompt(c, frags, rej, len){
   const L = [];
-  L.push('소설가가 초고를 쓰고 있다. [원고] 끝의 ▶ 자리에 바로 이어질 ' + (len === 'para' ? '한 문단(3~5문장)' : '한두 문장') + '을 써 줘.', '');
+  L.push('소설가가 초고를 쓰고 있다. [원고] 끝의 ▶ 자리에 바로 이어질 ' + (len === 'para' ? '한 문단(새 문장 3~5개)' : '새 문장 한두 개') + '를 써 줘.', '');
+  L.push('- 반드시 ▶ 뒤에 올 새 문장을 쓴다. 마침표나 몇 글자만 붙이고 끝내지 않는다. [원고]에 이미 있는 문장을 다시 쓰지 않는다.');
   L.push('- 작가의 문체를 그대로 따른다: 어휘, 어미, 시제, 시점, 문장 길이와 호흡, 대사 따옴표 방식.');
   L.push('- 바로 다음 순간을 쓴다. 장면을 건너뛰거나 이야기를 서둘러 매듭짓거나 교훈으로 정리하지 않는다.');
-  if(c.mid) L.push('- ▶ 앞 문장이 아직 끝나지 않았다. 그 문장을 자연스럽게 마저 이은 뒤 계속 쓴다.');
+  if(c.mid) L.push('- ▶ 앞 문장이 아직 끝나지 않았다. 그 문장을 자연스럽게 마저 잇고, 이어서 새 문장을 ' + (len === 'para' ? '3~5개' : '한두 개') + ' 더 쓴다.');
+  else if(!c.newPara) L.push('- ▶ 앞 문장은 끝났다(마침표가 빠졌을 수 있다). 그 문장에는 손대지 말고 다음 문장부터 쓴다.');
   if(c.newPara) L.push('- ▶는 새 문단의 첫머리다.');
   if(c.after) L.push('- ▶ 뒤에 [뒤 문맥]이 이미 있다. 거기로 자연스럽게 닿게 쓰고, 뒤 문맥의 내용을 미리 써 버리지 않는다.');
   if(frags.length) L.push('- [조각]은 작가가 모아 둔 소재다. 이 자리에 꼭 맞을 때만 살짝 쓴다.');
