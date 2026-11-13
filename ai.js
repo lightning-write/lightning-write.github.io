@@ -66,8 +66,9 @@ function thinkingFor(id, tier){
   if(i.ver < 3) return i.kind === 'pro' ? (tier === 'deep' ? null : {thinkingBudget: 1024}) : {thinkingBudget: tier === 'deep' ? 4096 : 0};
   return {thinkingLevel: tier === 'deep' ? 'high' : 'low'};
 }
-function parseSse(buf){
-  const out = []; let rest = buf;
+function parseSse(buf, final){
+  const out = []; let rest = buf.replace(/\r\n?/g, '\n');   // 구글은 조각을 \r\n\r\n 으로 나눠 보낸다
+  if(final) rest += '\n\n';
   for(;;){
     const i = rest.indexOf('\n\n'); if(i < 0) break;
     const chunk = rest.slice(0, i); rest = rest.slice(i + 2);
@@ -86,26 +87,35 @@ async function generate(prompt, opt){
   const think = thinkingFor(id, opt.tier || 'mid');
   const body = {contents: [{role: 'user', parts: [{text: String(prompt)}]}], generationConfig: gen,
     safetySettings: ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT'].map(c => ({category: c, threshold: 'BLOCK_ONLY_HIGH'}))};
-  const run = async withThink => {
+  const run = async (withThink, signal) => {
     const b = Object.assign({}, body, {generationConfig: Object.assign({}, gen, withThink && think ? {thinkingConfig: think} : {})});
     let r;
-    try{ r = await fetch(BASE + '/models/' + encodeURIComponent(id) + ':streamGenerateContent?alt=sse', {method: 'POST', signal: opt.signal, headers: {'Content-Type': 'application/json', 'x-goog-api-key': k}, body: JSON.stringify(b)}); }
+    try{ r = await fetch(BASE + '/models/' + encodeURIComponent(id) + ':streamGenerateContent?alt=sse', {method: 'POST', signal, headers: {'Content-Type': 'application/json', 'x-goog-api-key': k}, body: JSON.stringify(b)}); }
     catch(e){ throw (e && e.name === 'AbortError') ? err('cancelled') : err('network'); }
     if(!r.ok) throw await httpErr(r);
     return r;
   };
+  /* 답이 오래 안 오면 멈춘다: 첫 글자까지 90초, 그 뒤로는 30초 동안 아무것도 안 오면 */
+  const ctl = new AbortController();
+  let timedOut = false, tm = null;
+  const arm = ms => { clearTimeout(tm); tm = setTimeout(() => { timedOut = true; ctl.abort(); }, ms); };
+  if(opt.signal){ if(opt.signal.aborted) ctl.abort(); else opt.signal.addEventListener('abort', () => ctl.abort(), {once: true}); }
+  const sig = ctl.signal;
+  const run0 = run;
+  arm(90000);
   let r;
-  try{ r = await run(true); }
-  catch(e){ if(e && e.code === 'thinking' && think) r = await run(false); else throw e; }
+  try{
+    try{ r = await run0(true, sig); }
+    catch(e){ if(e && e.code === 'thinking' && think) r = await run0(false, sig); else throw e; }
+  }catch(e){ clearTimeout(tm); if(timedOut) throw err('timeout'); throw e; }
   const dec = new TextDecoder('utf-8');
   const reader = r.body.getReader();
   let buf = '', text = '', finish = '', blocked = '';
   try{
     for(;;){
       const {value, done} = await reader.read();
-      if(done) break;
-      buf += dec.decode(value, {stream: true});
-      const p = parseSse(buf); buf = p.rest;
+      if(!done){ buf += dec.decode(value, {stream: true}); arm(text ? 30000 : 90000); }
+      const p = parseSse(buf, done); buf = p.rest;
       for(const d of p.events){
         let j; try{ j = JSON.parse(d); }catch(e){ continue; }
         if(j.promptFeedback && j.promptFeedback.blockReason) blocked = j.promptFeedback.blockReason;
@@ -115,11 +125,15 @@ async function generate(prompt, opt){
         for(const part of (c.content && c.content.parts) || []) if(typeof part.text === 'string' && !part.thought) text += part.text;
       }
       if(opt.onText && text) opt.onText({text});
+      if(done) break;
     }
   }catch(e){
+    clearTimeout(tm);
+    if(timedOut) throw err('timeout', {text});
     if(e && e.name === 'AbortError') throw err('cancelled', {text});
     throw err('network', {text});
   }
+  clearTimeout(tm);
   if(blocked || finish === 'SAFETY' || finish === 'PROHIBITED_CONTENT' || finish === 'BLOCKLIST') throw err('refused', {text});
   if(!text.trim()) throw err('empty_completion');
   return {text, truncated: finish === 'MAX_TOKENS'};
@@ -146,6 +160,7 @@ function errorText(e){
   if(c === 'busy') return 'AI 서버가 붐빕니다. 잠시 뒤 다시 눌러 주세요.';
   if(c === 'network') return '인터넷에 연결되어 있지 않거나 연결이 끊겼습니다. 다시 눌러 주세요.';
   if(c === 'cancelled') return '멈췄습니다.';
+  if(c === 'timeout') return '답이 너무 오래 오지 않아 멈췄습니다. 다시 눌러 보고, 계속 이러면 「라이트닝 설정」에서 번개 속도를 「빠르게」로 하거나 다른 Flash-Lite 모델로 바꿔 보세요.';
   return 'AI를 부르지 못했습니다' + (e && e.status ? ' (' + e.status + ')' : '') + '. 다시 눌러 주세요.';
 }
 window.__ai = {

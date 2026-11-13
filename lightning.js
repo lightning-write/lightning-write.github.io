@@ -261,7 +261,13 @@ function aiFail(e, ms){
   if(e && (e.code === 'no_key' || e.code === 'no_model')){ openAi(e.code === 'no_key' ? '번개를 치려면 먼저 Gemini API 키가 필요합니다. 무료로 받을 수 있습니다.' : ''); return; }
   toast(AI.errorText(e), ms || 8000);
 }
-function showLive(on, text){ $('#live').hidden = !on; $('#boltBtn').classList.toggle('busy', !!on); if(text) $('#liveText').textContent = text; }
+let liveT = null, liveAt = 0;
+function showLive(on, text){
+  $('#live').hidden = !on; $('#boltBtn').classList.toggle('busy', !!on); clearInterval(liveT);
+  if(!on) return;
+  liveAt = Date.now(); const base = text || '쓰는 중…'; $('#liveText').textContent = base;
+  liveT = setInterval(() => { const s = Math.round((Date.now() - liveAt) / 1000); $('#liveText').textContent = s >= 3 ? base + ' ' + s + '초' : base; }, 1000);
+}
 function stopGen(){ if(gen) gen.ctl.abort(); }
 $('#stopBtn').onclick = stopGen;
 
@@ -295,9 +301,10 @@ async function bolt(){
   };
   const ctl = new AbortController();
   gen = {ctl, span};
-  showLive(true, '쓰는 중…');
+  showLive(true, '생각하는 중…');
   try{
-    const res = await AI.generate(prompt, {signal: ctl.signal, tier: prefs.tier, maxTokens: prefs.len === 'para' ? 1500 : 600, onText: ({text}) => { put(text); keepVisible(span); }});
+    let started = false;
+    const res = await AI.generate(prompt, {signal: ctl.signal, tier: prefs.tier, maxTokens: prefs.len === 'para' ? 1500 : 600, onText: ({text}) => { if(!started){ started = true; showLive(true, '쓰는 중…'); } put(text); keepVisible(span); }});
     put(res.text);
     if(res.truncated) toast('길이 제한에 걸려 중간에 멈췄습니다.');
   }catch(e){
