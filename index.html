@@ -20,8 +20,8 @@
   --chrome:#f4f5f7; --hover:#e8ecf1; --accent:#2c4a6e; --accent-ink:#ffffff; --warn:#a4462b; --ok:#3d6b4a;
   --t-del:#a4462b; --t-del-bg:rgba(164,70,43,.11); --t-ins:#2e6a44; --t-ins-bg:rgba(46,120,72,.13); --t-memo:#56606c; --t-memo-bg:rgba(86,96,108,.12); --t-mat:#865710; --t-mat-bg:rgba(196,138,36,.17);
   --serif:'KoPub Batang','KoPubBatang Light','KoPub바탕체 Light','Noto Serif KR',serif;
-  /* 본문을 뺀 모든 글꼴: 윈도는 맑은 고딕, 애플 기기는 산돌고딕 Neo, 그 밖(안드로이드)은 Noto Sans KR(본고딕) */
-  --ui:'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo','Noto Sans KR',system-ui,-apple-system,sans-serif;
+  /* 본문을 뺀 모든 글꼴: 모든 기기에서 같게 보이도록 Noto Sans KR(본고딕) 웹 글꼴 하나로. 한 번 받으면 서비스 워커가 보관해 오프라인에서도 쓴다 */
+  --ui:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){
