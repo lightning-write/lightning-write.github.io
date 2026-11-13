@@ -375,7 +375,7 @@ const SHEETS = ['tidyDlg', 'fragDlg', 'stormDlg', 'aiDlg'];
 const sheetOpen = () => SHEETS.find(id => !$('#' + id).hidden) || null;
 document.addEventListener('keydown', e => {
   if((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.isComposing){
-    if(sheetOpen() || !$('#drvDlg').hidden || !$('#resetDlg').hidden) return;
+    if(sheetOpen() || !$('#drvDlg').hidden) return;
     e.preventDefault(); e.stopPropagation(); bolt(); return;
   }
   if(e.key === 'Escape'){
@@ -1329,6 +1329,7 @@ let aiAfter = null;
 function openAi(why, after){
   aiAfter = after || null;
   openSheet('aiDlg');
+  if(why){ $('#setAi').open = true; $('#setReset').open = false; }
   renderAi();
   aiMsg(why || '');
   if(!AI.hasKey()) setTimeout(() => $('#aiKey').focus(), 0);
@@ -1339,7 +1340,7 @@ $('#aiKey').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventD
 $('#aiModel').onchange = () => { AI.setModel($('#aiModel').value); renderAi(); aiMsg('모델을 「' + AI.model() + '」(으)로 바꿨습니다.'); };
 $('#aiForget').onclick = () => { AI.setKey(''); AI.setModel(''); AI.setModels([]); renderAi(); aiMsg('이 기기에서 키를 지웠습니다.'); };
 $('#aiShow').onclick = () => { const i = $('#aiKey'); i.type = i.type === 'password' ? 'text' : 'password'; $('#aiShow').textContent = i.type === 'password' ? '보기' : '가리기'; };
-$('#aiBtn').onclick = () => { if(narrow()) app.classList.remove('drawer'); openAi(); };
+$('#setBtn').onclick = () => { if(narrow()) app.classList.remove('drawer'); openAi(); };
 
 /* ================= 시작 ================= */
 try{ document.execCommand('defaultParagraphSeparator', false, 'div'); }catch(e){}

@@ -1078,7 +1078,7 @@ const Drive = (() => {
     const pending = list.filter(x => x.dirty).length;
     const set = (html, tagText, b, showNow, err) => {
       s.innerHTML = html; tag.textContent = tagText;
-      btn.hidden = !b; if(b) btn.textContent = b;
+      btn.hidden = !b; if(b){ btn.dataset.tip = b; btn.setAttribute('aria-label', b); }
       now.hidden = !showNow;
       $('#driveOffBtn').hidden = !(CID && wanted);
       if(err){ s.classList.add('err'); tag.classList.add('err'); }
@@ -1103,8 +1103,9 @@ const Drive = (() => {
   $('#syncNowBtn').onclick = () => { flush().then(sync); };
   $('#driveOffBtn').onclick = () => {
     const b = $('#driveOffBtn');
-    if(!b.classList.contains('arm')){ b.classList.add('arm'); b.textContent = '정말 끊기'; setTimeout(() => { b.classList.remove('arm'); b.textContent = '연결 끊기'; }, 3000); return; }
-    b.classList.remove('arm'); b.textContent = '연결 끊기'; disconnect();
+    const off = () => { b.classList.remove('arm'); b.dataset.tip = '연결 끊기'; b.setAttribute('aria-label', '드라이브 연결 끊기'); };
+    if(!b.classList.contains('arm')){ b.classList.add('arm'); b.dataset.tip = '한 번 더 누르면 끊깁니다'; b.setAttribute('aria-label', '한 번 더 누르면 드라이브 연결이 끊깁니다'); toast('한 번 더 누르면 드라이브 연결을 끊습니다', 3000); setTimeout(off, 3000); return; }
+    off(); disconnect();
   };
   window.addEventListener('online', () => soon(300));
   window.addEventListener('offline', () => { if(wanted){ st = 'offline'; render(); } });
@@ -1137,8 +1138,8 @@ const Drive = (() => {
 /* ---------- 이 기기 초기화: 이 기기의 원고와 설정만 지운다. 드라이브 파일은 건드리지 않는다 ----------
    원고를 '지움' 표시하지 않고 저장소째 비우므로, 다음 동기화가 드라이브의 파일을 휴지통에 넣지 않는다 */
 const Reset = (() => {
-  const dlg = $('#resetDlg');
-  async function open(){
+  const sec = $('#setReset');
+  async function prep(){
     await flush();
     const all = (await DB.all()).filter(r => !r.deleted);
     const unsent = all.filter(r => r.dirty && !isBlank(r));
@@ -1149,10 +1150,8 @@ const Reset = (() => {
     $('#rsDrive').checked = false; $('#rsAi').checked = false; $('#rsWipe').checked = false;
     $('#rsWipeBox').hidden = !Drive.connected();
     $('#rsType').value = ''; $('#rsGo').disabled = true; $('#rsMsg').textContent = '';
-    dlg.hidden = false;
-    if(!narrow()) setTimeout(() => $('#rsType').focus(), 0);
   }
-  const close = () => { dlg.hidden = true; };
+  const close = () => { sec.open = false; };
   async function go(){
     if($('#rsType').value.trim() !== '초기화') return;
     $('#rsGo').disabled = true; $('#rsMsg').textContent = '지우는 중…';
@@ -1184,17 +1183,16 @@ const Reset = (() => {
       $('#rsMsg').textContent = '지우지 못했습니다. 브라우저 설정에서 이 사이트의 데이터를 지워 주세요.';
     }
   }
-  $('#resetBtn').onclick = () => { if(narrow()) $('#app').classList.remove('drawer'); open(); };
-  $('#rsClose').onclick = close; $('#rsNo').onclick = close;
-  dlg.addEventListener('click', e => { if(e.target === dlg) close(); });
+  sec.addEventListener('toggle', () => { if(sec.open) prep(); });
+  $('#rsNo').onclick = close;
   $('#rsType').addEventListener('input', () => { $('#rsGo').disabled = $('#rsType').value.trim() !== '초기화'; });
-  $('#rsType').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.isComposing){ e.preventDefault(); go(); } if(e.key === 'Escape') close(); });
+  $('#rsType').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.isComposing){ e.preventDefault(); go(); } });
   $('#rsGo').onclick = go;
   $('#rsBackup').onclick = () => $('#exBackup').click();
   // 초기화 직후 한 번 알린다
   const done = lsGet('reset-done', 0);
   if(done){ lsDel('reset-done'); setTimeout(() => toast(done === 2 ? '이 기기와 드라이브를 초기화했습니다. 다른 기기는 다음에 열 때 정리됩니다.' : '이 기기를 초기화했습니다.', 5000), 600); }
-  return {open};
+  return {prep};
 })();
 
 /* ---------- 말풍선: 아이콘에 마우스를 올리면 이름과 하는 일을 보여 준다 ----------

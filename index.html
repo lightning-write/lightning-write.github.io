@@ -150,7 +150,11 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #syncState{font-size:12.5px;line-height:1.6;color:var(--muted)}
 #syncState b{color:var(--ink);font-weight:500}
 #syncState.err{color:var(--warn)}
-.syncBtns{display:flex;gap:6px;flex-wrap:wrap}
+.syncBtns{display:flex;gap:2px;align-items:center}
+.syncBtns #setBtn{margin-left:auto}
+#syncBtn{color:var(--accent-ink);background:var(--accent)}
+#syncBtn:hover{background:var(--accent);filter:brightness(1.1)}
+#driveOffBtn.arm{color:#fff;background:var(--warn)}
 
 #backdrop{display:none}
 #scroll{flex:1;min-width:0;overflow:auto;padding:0 24px;background:var(--paper)}
@@ -372,6 +376,14 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .tl-meta input{width:9em}
 .tl-btns{margin-left:auto;display:flex;gap:2px}
 .tl-meta button{font-size:12px;padding:2px 8px;color:var(--muted)}
+/* 설정: 펼쳤다 접었다 */
+.set-sec{border:1px solid var(--line);border-radius:10px;margin:0 0 10px}
+.set-sec > summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;cursor:pointer;list-style:none;padding:12px 14px;font-weight:600;font-size:14px}
+.set-sec > summary::-webkit-details-marker{display:none}
+.set-sec > summary::before{content:"▸";display:inline-block;width:12px;text-align:center;font-size:13px;line-height:1;color:var(--muted);align-self:center}
+.set-sec[open] > summary::before{content:"▾"}
+.set-sec > summary small{font-weight:400;font-size:12px;color:var(--muted)}
+.set-in{padding:0 14px 12px;border-top:1px solid var(--line)}
 /* 이 기기 초기화 */
 .rs-warn{color:var(--warn);background:var(--t-del-bg);border-radius:8px;padding:10px 12px;line-height:1.6}
 .rs-warn button{margin-top:6px}
@@ -491,12 +503,11 @@ button.danger:disabled{opacity:.4}
       <div id="syncBox">
         <div id="syncState">구글 드라이브</div>
         <div class="syncBtns">
-          <button id="syncBtn" class="primary" hidden>드라이브 연결</button>
-          <button id="syncNowBtn" hidden>지금 동기화</button>
-          <button id="driveOffBtn" class="ghost" hidden>연결 끊기</button>
-          <button id="installBtn" hidden>앱으로 설치</button>
-          <button id="aiBtn" class="ghost">라이트닝 설정</button>
-          <button id="resetBtn" class="ghost">이 기기 초기화</button>
+          <button id="syncBtn" class="icon sm" hidden data-tip="드라이브 연결" data-tip-d="구글 드라이브에 연결하면 다른 기기와 원고가 이어집니다" aria-label="드라이브 연결"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.3 4 4 0 0 1 17 18z"/><path d="M12 15v-5M9.5 12.5 12 10l2.5 2.5"/></svg></button>
+          <button id="syncNowBtn" class="icon sm" hidden data-tip="지금 동기화" data-tip-d="드라이브와 지금 바로 맞춥니다" aria-label="지금 동기화"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg></button>
+          <button id="driveOffBtn" class="icon sm" hidden data-tip="연결 끊기" data-tip-d="이 기기와 드라이브의 연결을 끊습니다. 원고는 이 기기에 남습니다" aria-label="드라이브 연결 끊기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.3 4 4 0 0 1 17 18z"/><path d="M4 4l16 16"/></svg></button>
+          <button id="installBtn" class="icon sm" hidden data-tip="앱으로 설치" data-tip-d="홈 화면·바탕화면에 앱으로 설치합니다" aria-label="앱으로 설치"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19h14"/></svg></button>
+          <button id="setBtn" class="icon sm" data-tip="설정" data-tip-d="라이트닝(Gemini 키·모델·번개 속도)과 이 기기 초기화" aria-label="설정"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
         </div>
       </div>
     </aside>
@@ -584,8 +595,11 @@ button.danger:disabled{opacity:.4}
 
 <div id="aiDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="aiTitle">
   <div class="sheet-box">
-    <header class="sheet-head"><h2 id="aiTitle">라이트닝 설정</h2><button id="aiClose" class="ghost" type="button">닫기</button></header>
+    <header class="sheet-head"><h2 id="aiTitle">설정</h2><button id="aiClose" class="ghost" type="button">닫기</button></header>
     <div class="sheet-body ai-body">
+      <details class="set-sec" id="setAi" open>
+        <summary><span>라이트닝</span><small>Gemini API 키 · 모델 · 번개 속도</small></summary>
+        <div class="set-in">
       <p id="aiState" class="ai-state"></p>
       <h3>Gemini API 키 <span class="hint">· 구글 AI Studio에서 무료로 받습니다</span></h3>
       <ol class="hint ai-steps">
@@ -606,13 +620,11 @@ button.danger:disabled{opacity:.4}
       <h3>알아 둘 점</h3>
       <p class="hint">무료 등급으로 보낸 글은 구글이 제품 개선에 쓸 수 있고, 사람이 읽을 수도 있다고 약관에 적혀 있습니다(유료 등급은 쓰지 않음). 초고를 쓰는 데에는 쓰되, 그 점은 알고 쓰세요. 번개는 커서 앞 3,000자 안팎과 조각·개요를, build는 정리할 부분과 앞뒤 문맥을, 스토밍은 브레인스토밍과 원고 발췌를 보냅니다.</p>
       <p><button id="aiForget" type="button" class="ghost" hidden>이 기기에서 키 지우기</button></p>
-    </div>
-  </div>
 </div>
-<div id="resetDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="rsTitle">
-  <div class="sheet-box">
-    <header class="sheet-head"><h2 id="rsTitle">이 기기 초기화</h2><button id="rsClose" class="ghost" type="button">닫기</button></header>
-    <div class="sheet-body ai-body">
+      </details>
+      <details class="set-sec" id="setReset">
+        <summary><span>이 기기 초기화</span><small>원고·설정 지우기, 드라이브까지 비우기</small></summary>
+        <div class="set-in">
       <p>이 기기(이 브라우저)에 있는 원고와 휴지통, 서식·라이트닝 설정을 모두 지우고 처음 상태로 되돌립니다.</p>
       <p id="rsCount" class="ai-state"></p>
       <p id="rsUnsent" class="rs-warn" hidden><span></span> <button id="rsBackup" type="button">모든 원고 백업 먼저</button></p>
@@ -625,11 +637,12 @@ button.danger:disabled{opacity:.4}
       <p class="hint">되돌릴 수 없습니다. 아래 칸에 <b>초기화</b>라고 적어야 지울 수 있습니다.</p>
       <div class="ai-key"><input id="rsType" type="text" placeholder="초기화" autocomplete="off" aria-label="확인 문구"><button id="rsGo" type="button" class="danger" disabled>지우기</button></div>
       <p id="rsMsg" class="hint ai-msg" aria-live="polite"></p>
-      <p><button id="rsNo" type="button" class="ghost">그만두기</button></p>
+      <p><button id="rsNo" type="button" class="ghost">접기</button></p>
+</div>
+      </details>
     </div>
   </div>
 </div>
-
 <div id="toast" role="status" hidden></div>
   <input id="fileIn" type="file" class="vh" tabindex="-1" aria-hidden="true">
 </div>
