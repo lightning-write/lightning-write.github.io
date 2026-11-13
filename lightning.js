@@ -1299,7 +1299,7 @@ async function aiCheck(){
   if(aiBusy) return;
   const k = $('#aiKey').value.trim();
   if(!k){ aiMsg('키를 붙여 넣어 주세요.', true); $('#aiKey').focus(); return; }
-  if(!/^[A-Za-z0-9_\-]{20,}$/.test(k)){ aiMsg('키 모양이 아닙니다. AI Studio에서 복사한 키를 그대로 붙여 넣어 주세요 (보통 AIza로 시작).', true); return; }
+  if(!/^[A-Za-z0-9_.\-]{20,}$/.test(k)){ aiMsg('키 모양이 아닙니다. AI Studio에서 복사한 키를 그대로 붙여 넣어 주세요 (AQ. 또는 AIza로 시작합니다).', true); return; }
   aiBusy = true; $('#aiCheck').disabled = true; aiMsg('키를 확인하고 모델 목록을 받는 중…');
   try{
     const list = await AI.listModels(k);

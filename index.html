@@ -581,10 +581,10 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
       <h3>Gemini API 키 <span class="hint">· 구글 AI Studio에서 무료로 받습니다</span></h3>
       <ol class="hint ai-steps">
         <li><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>를 <b>원고를 쓰는 구글 계정</b>으로 엽니다.</li>
-        <li>「API 키 만들기(Create API key)」를 누르고, 만들어진 키를 복사합니다.</li>
+        <li>「API 키 만들기」를 누릅니다. 이름과 프로젝트는 그대로 두고 「키 만들기」. 나온 키(AQ.로 시작) 옆의 복사 단추를 누릅니다.</li>
         <li>아래에 붙여 넣고 「확인」을 누릅니다. 키는 이 기기의 브라우저에만 저장되고, 구글에만 보냅니다.</li>
       </ol>
-      <div class="ai-key"><input id="aiKey" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" aria-label="Gemini API 키"><button id="aiShow" type="button" class="ghost">보기</button><button id="aiCheck" type="button" class="primary">확인</button></div>
+      <div class="ai-key"><input id="aiKey" type="password" placeholder="AQ.… 또는 AIza…" autocomplete="off" spellcheck="false" aria-label="Gemini API 키"><button id="aiShow" type="button" class="ghost">보기</button><button id="aiCheck" type="button" class="primary">확인</button></div>
       <p id="aiMsg" class="hint ai-msg" aria-live="polite"></p>
       <h3>모델</h3>
       <select id="aiModel" aria-label="모델"></select>
