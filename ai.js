@@ -59,12 +59,15 @@ async function httpErr(r){
   if(st === 503 || st === 500 || st === 502 || st === 504) return err('busy', {status: st, msg});
   return err('http', {status: st, msg});
 }
-/* 생각(thinking) 설정: 2.5 세대는 thinkingBudget, 3 세대부터는 thinkingLevel. 안 받는 모델이면 빼고 다시 보낸다 */
+/* 생각(thinking) 설정. 생각에 쓴 토큰도 maxOutputTokens에 함께 잡혀서, 생각이 길면 본문이 비어 온다.
+   2.5 세대는 thinkingBudget(Flash·Flash-Lite는 0으로 끌 수 있음), 3 세대부터는 thinkingLevel.
+   tier: 'fast' → minimal(거의 생각 안 함), 'mid' → low, 'deep' → high. Pro는 minimal이 없어 low */
 function thinkingFor(id, tier){
   const i = info(id);
   if(!i.ver) return null;
-  if(i.ver < 3) return i.kind === 'pro' ? (tier === 'deep' ? null : {thinkingBudget: 1024}) : {thinkingBudget: tier === 'deep' ? 4096 : 0};
-  return {thinkingLevel: tier === 'deep' ? 'high' : 'low'};
+  if(i.ver < 3) return i.kind === 'pro' ? {thinkingBudget: tier === 'deep' ? 4096 : 128} : {thinkingBudget: tier === 'deep' ? 2048 : 0};
+  const lv = tier === 'deep' ? 'high' : tier === 'mid' ? 'low' : 'minimal';
+  return {thinkingLevel: i.kind === 'pro' && lv === 'minimal' ? 'low' : lv};
 }
 function parseSse(buf, final){
   const out = []; let rest = buf.replace(/\r\n?/g, '\n');   // 구글은 조각을 \r\n\r\n 으로 나눠 보낸다
@@ -82,9 +85,10 @@ async function generate(prompt, opt){
   opt = opt || {};
   const k = key(); if(!k) throw err('no_key');
   const id = opt.model || model(); if(!id) throw err('no_model');
-  const gen = {temperature: opt.temperature == null ? (opt.json ? 0.6 : 0.9) : opt.temperature, maxOutputTokens: opt.maxTokens || (opt.json ? 16384 : 1024)};
+  // 길이는 프롬프트로 조절하고, 한도는 넉넉히 둔다(생각 토큰이 함께 잡히므로)
+  const gen = {temperature: opt.temperature == null ? (opt.json ? 0.6 : 0.9) : opt.temperature, maxOutputTokens: Math.max(8192, opt.maxTokens || 0)};
   if(opt.json) gen.responseMimeType = 'application/json';
-  const think = thinkingFor(id, opt.tier || 'mid');
+  let think = thinkingFor(id, opt.tier || 'mid');
   const body = {contents: [{role: 'user', parts: [{text: String(prompt)}]}], generationConfig: gen,
     safetySettings: ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT'].map(c => ({category: c, threshold: 'BLOCK_ONLY_HIGH'}))};
   const run = async (withThink, signal) => {
@@ -106,7 +110,12 @@ async function generate(prompt, opt){
   let r;
   try{
     try{ r = await run0(true, sig); }
-    catch(e){ if(e && e.code === 'thinking' && think) r = await run0(false, sig); else throw e; }
+    catch(e){
+      if(!(e && e.code === 'thinking' && think)) throw e;
+      // 이 모델이 그 생각 단계를 안 받으면: minimal → low로, 그래도 안 되면 생각 설정을 빼고
+      if(think.thinkingLevel === 'minimal'){ think = {thinkingLevel: 'low'}; try{ r = await run0(true, sig); }catch(e2){ if(e2 && e2.code === 'thinking') r = await run0(false, sig); else throw e2; } }
+      else r = await run0(false, sig);
+    }
   }catch(e){ clearTimeout(tm); if(timedOut) throw err('timeout'); throw e; }
   const dec = new TextDecoder('utf-8');
   const reader = r.body.getReader();
@@ -135,7 +144,11 @@ async function generate(prompt, opt){
   }
   clearTimeout(tm);
   if(blocked || finish === 'SAFETY' || finish === 'PROHIBITED_CONTENT' || finish === 'BLOCKLIST') throw err('refused', {text});
-  if(!text.trim()) throw err('empty_completion');
+  if(!text.trim()){
+    // 생각만 하다 한도가 끝난 경우: 생각을 줄이고 한도를 늘려 한 번 더
+    if(finish === 'MAX_TOKENS' && !opt._retry) return generate(prompt, Object.assign({}, opt, {_retry: true, tier: 'fast', maxTokens: Math.max(16384, (opt.maxTokens || 0) * 2)}));
+    throw err('empty_completion', {finish});
+  }
   return {text, truncated: finish === 'MAX_TOKENS'};
 }
 /* 답을 JSON 하나로 받는다. 코드 블록 울타리나 앞뒤 잡글은 걷어 내고 읽는다 */
@@ -154,7 +167,7 @@ function errorText(e){
   if(c === 'rate_limited') return '무료 사용량 한도에 닿았습니다 (분당 또는 하루). 잠시 뒤 다시 누르거나, 「라이트닝 설정」에서 하루 한도가 넉넉한 Flash-Lite 모델로 바꿔 보세요.';
   if(c === 'model') return '이 모델을 지금 쓸 수 없습니다. 「라이트닝 설정」에서 목록을 새로 받아 다른 모델을 골라 주세요.';
   if(c === 'refused') return 'AI가 이 대목은 쓰지 않겠다고 했습니다. 앞 글을 조금 바꿔 다시 해 보세요.';
-  if(c === 'empty_completion') return '답이 비어 있었습니다. 다시 눌러 주세요.';
+  if(c === 'empty_completion') return '답이 비어 있었습니다' + (e.finish ? ' (' + e.finish + ')' : '') + '. 다시 눌러 주세요. 계속 이러면 「라이트닝 설정」에서 다른 모델을 골라 보세요.';
   if(c === 'prompt_too_large') return '보낼 글이 너무 깁니다. 고른 부분만 정리해 보세요.';
   if(c === 'invalid_json') return '답을 읽지 못했습니다. 다시 눌러 주세요.';
   if(c === 'busy') return 'AI 서버가 붐빕니다. 잠시 뒤 다시 눌러 주세요.';

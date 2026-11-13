@@ -304,7 +304,7 @@ async function bolt(){
   showLive(true, '생각하는 중…');
   try{
     let started = false;
-    const res = await AI.generate(prompt, {signal: ctl.signal, tier: prefs.tier, maxTokens: prefs.len === 'para' ? 1500 : 600, onText: ({text}) => { if(!started){ started = true; showLive(true, '쓰는 중…'); } put(text); keepVisible(span); }});
+    const res = await AI.generate(prompt, {signal: ctl.signal, tier: prefs.tier === 'deep' ? 'mid' : 'fast', onText: ({text}) => { if(!started){ started = true; showLive(true, '쓰는 중…'); } put(text); keepVisible(span); }});
     put(res.text);
     if(res.truncated) toast('길이 제한에 걸려 중간에 멈췄습니다.');
   }catch(e){
@@ -509,7 +509,7 @@ async function runTidy(){
   $('#tidyErr').textContent = ''; $('#tidyReview').hidden = true; $('#tidyFoot').hidden = true; $('#tidyWait').hidden = false;
   $('#tidyProg').textContent = '읽는 중…';
   try{
-    const res = await AI.generate(tidyPrompt(t, t.fragMap), {signal: t.ctl.signal, tier: prefs.tier === 'deep' ? 'deep' : 'mid', temperature: 0.3, maxTokens: 8192, onText: ({text}) => {
+    const res = await AI.generate(tidyPrompt(t, t.fragMap), {signal: t.ctl.signal, tier: stTier(), temperature: 0.3, maxTokens: 16384, onText: ({text}) => {
       const done = (text.match(/^\s*\[\s*\d+\s*\]/gm) || []).length;
       $('#tidyProg').textContent = '정리하는 중… ' + Math.min(done, t.n) + ' / ' + t.n + '문장';
     }});
@@ -849,7 +849,7 @@ function ctH(){
   if(!stCT || !stCT.text) return '<div id="stCT" hidden></div>';
   return '<div id="stCT"><span>' + esc(stCT.text) + '</span>' + stCT.acts.map(a => '<button type="button" data-act="' + a[0] + '">' + esc(a[1]) + '</button>').join('') + '</div>';
 }
-const stTier = () => prefs.tier === 'deep' ? 'deep' : 'mid';
+const stTier = () => prefs.tier === 'deep' ? 'deep' : prefs.tier === 'fast' ? 'fast' : 'mid';
 async function sampleOutline(prompt, total, label, ctl){
   return AI.generateJson(prompt, {signal: ctl.signal, tier: stTier(), onText: ({text}) => {
     const n = (text.match(/"t"\s*:/g) || []).length;
