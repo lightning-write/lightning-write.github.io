@@ -764,7 +764,7 @@ $('#exDrive').onclick = async () => {
   try{
     const res = await Drive.saveHwpx(cur.id, titleVal(), await hwpxBlob());
     setSave('saved', '드라이브에 저장함 · ' + titleVal() + '.hwpx');
-    if(res && res.webViewLink) notice('드라이브 \'MYWONGO\' 폴더에 「' + titleVal() + '.hwpx」를 저장했습니다.', '드라이브에서 열기', () => window.open(res.webViewLink, '_blank', 'noopener'));
+    if(res && res.webViewLink) notice('드라이브 \'LWRITE\' 폴더에 「' + titleVal() + '.hwpx」를 저장했습니다.', '드라이브에서 열기', () => window.open(res.webViewLink, '_blank', 'noopener'));
   }catch(e){ setSave('error', Drive.errorText(e)); }
 };
 
@@ -772,7 +772,8 @@ $('#exDrive').onclick = async () => {
 const Drive = (() => {
   const CID = ((window.WONGO_CONFIG || {}).googleClientId || '').trim();
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
-  const ROOT = 'MYWONGO', OLD_ROOT = '원고 편집기', DATA = '동기화 자료 (지우지 마세요)';
+  const ROOT = 'LWRITE', OLD_ROOTS = ['MYWONGO', '원고 편집기'], DATA = '동기화 자료 (지우지 마세요)';
+  const LEFT = 'LWRITE로 옮긴 뒤 남은 폴더 (지워도 됨)';
   let token = null, exp = 0, folders = null, running = false, again = false, soonT = null, lastSync = 0, st = 'idle';
   let wanted = !!lsGet('drive-on', false);
   const saved = lsGet('token', null);
@@ -834,17 +835,41 @@ const Drive = (() => {
     const body = {name, mimeType: 'application/vnd.google-apps.folder'}; if(parent) body.parents = [parent];
     return (await api('/drive/v3/files?fields=id', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).id;
   }
-  /* 예전 이름('원고 편집기') 폴더가 있고 새 이름 폴더가 없으면 이름만 바꿔서 이어 쓴다 */
+  /* 최상위 폴더: 지금 이름은 LWRITE (2026-11-13까지 MYWONGO, 그 전엔 '원고 편집기').
+     LWRITE가 없으면 옛 폴더의 이름만 바꿔 그대로 이어 쓴다(원고·한글 파일·하위 폴더가 함께 간다).
+     LWRITE가 있는데 옛 이름 폴더도 있으면(아직 옛 판인 기기가 새로 만든 것) 그 안의 것을 LWRITE로 옮겨 합친다 */
+  const qFolder = (n, parent) => "mimeType='application/vnd.google-apps.folder' and name='" + n.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "' and trashed=false" + (parent ? " and '" + parent + "' in parents" : '');
+  const patch = (id, body, extra) => api('/drive/v3/files/' + id + '?fields=id' + (extra || ''), {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   async function rootFolder(){
-    const q = n => "mimeType='application/vnd.google-apps.folder' and name='" + n + "' and trashed=false";
-    const now = await find(q(ROOT), 'id');
-    if(now.length) return now[0].id;
-    const old = await find(q(OLD_ROOT), 'id');
-    if(old.length){
-      await api('/drive/v3/files/' + old[0].id + '?fields=id', {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: ROOT})});
-      return old[0].id;
+    const now = await find(qFolder(ROOT), 'id,createdTime');
+    const olds = [];
+    for(const n of OLD_ROOTS) olds.push(...(await find(qFolder(n), 'id,name')));
+    if(!now.length && !olds.length) return folder(ROOT, null);
+    let root;
+    if(now.length) root = now[0].id;
+    else { root = olds.shift().id; await patch(root, {name: ROOT}); }
+    for(const o of olds){ try{ await mergeInto(o.id, root); }catch(e){ if(e && e.code !== 'notfound') throw e; } }
+    return root;
+  }
+  async function mergeInto(oldRoot, root){
+    const kids = await find("'" + oldRoot + "' in parents and trashed=false", 'id,name,mimeType');
+    for(const k of kids){
+      if(k.mimeType === 'application/vnd.google-apps.folder' && k.name === DATA){
+        const dst = await folder(DATA, root);
+        const have = new Map();
+        for(const f of await find("'" + dst + "' in parents and trashed=false and appProperties has { key='kind' and value='ms' }", 'id,modifiedTime,appProperties')) have.set(f.appProperties.wpId, f);
+        for(const f of await find("'" + k.id + "' in parents and trashed=false", 'id,modifiedTime,appProperties')){
+          const id = f.appProperties && f.appProperties.wpId, h = id && have.get(id);
+          if(h){
+            // 같은 원고가 양쪽에: 더 나중에 고친 쪽만 남긴다
+            if(new Date(f.modifiedTime) > new Date(h.modifiedTime)){ await patch(h.id, {trashed: true}); await patch(f.id, {}, '&addParents=' + dst + '&removeParents=' + k.id); have.set(id, f); }
+            else await patch(f.id, {trashed: true});
+          } else await patch(f.id, {}, '&addParents=' + dst + '&removeParents=' + k.id);
+        }
+      } else await patch(k.id, {}, '&addParents=' + root + '&removeParents=' + oldRoot);
     }
-    return folder(ROOT, null);
+    // 이 앱이 볼 수 없는 파일(claude.ai 커넥터가 만든 것 등)이 남아 있을 수 있어 지우지 않고 이름만 바꿔 둔다
+    await patch(oldRoot, {name: LEFT});
   }
   async function ensureFolders(){
     if(folders) return folders;
