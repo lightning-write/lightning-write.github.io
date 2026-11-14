@@ -26,14 +26,14 @@ const prefs = Object.assign({len: 'short', tier: 'mid', enter2: true}, lsGet('pr
 const savePrefs = () => lsSet('prefs', prefs);
 function renderPrefs(){
   const para = prefs.len === 'para', b = $('#lenBtn');
-  b.dataset.tip = para ? '문단 · blocks' : '문장 · block';
+  b.dataset.tip = para ? 'blocks' : 'block';
   b.dataset.tipD = para ? '번개 한 번에 한 문단이 나옵니다. 누르면 한두 문장(block)으로' : '번개 한 번에 한두 문장이 나옵니다. 누르면 한 문단(blocks)으로';
-  b.setAttribute('aria-label', para ? '문단(blocks): 한 문단. 누르면 문장으로' : '문장(block): 한두 문장. 누르면 문단으로');
+  b.setAttribute('aria-label', para ? 'blocks: 한 문단. 누르면 block으로' : 'block: 한두 문장. 누르면 blocks로');
   $('#lenIcS').toggleAttribute('hidden', para); $('#lenIcP').toggleAttribute('hidden', !para);
   document.querySelectorAll('[data-tier]').forEach(x => { const on = x.dataset.tier === prefs.tier; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
   $('#aiEnter2').checked = !!prefs.enter2;
 }
-$('#lenBtn').onclick = () => { prefs.len = prefs.len === 'para' ? 'short' : 'para'; savePrefs(); renderPrefs(); toast(prefs.len === 'para' ? '문단 · 번개 한 번에 한 문단(blocks)' : '문장 · 번개 한 번에 한두 문장(block)', 2200); };
+$('#lenBtn').onclick = () => { prefs.len = prefs.len === 'para' ? 'short' : 'para'; savePrefs(); renderPrefs(); toast(prefs.len === 'para' ? 'blocks · 번개 한 번에 한 문단' : 'block · 번개 한 번에 한두 문장', 2200); };
 document.querySelectorAll('[data-tier]').forEach(b => { b.onclick = () => { prefs.tier = b.dataset.tier; savePrefs(); renderPrefs(); }; });
 $('#aiEnter2').onchange = () => { prefs.enter2 = $('#aiEnter2').checked; savePrefs(); };
 
@@ -1075,7 +1075,7 @@ function renderStorm(){
   $('#stUseMs').checked = s.useMs !== false;
   if(document.activeElement !== $('#stTarget')) $('#stTarget').value = s.target || '';
   $('#stEnd').checked = !!s.endroll;
-  $('#stGo').textContent = s.out ? '다시 스토밍' : '스토밍';
+  $('#stGo').textContent = s.out ? '다시 storming' : 'storming';
   $('#stGoNote').textContent = s.out ? '고정한 칸은 그대로 두고 나머지를 새로 짭니다' : '브레인스토밍을 읽고 8페이지즈 개요를 짭니다';
   renderRv(s);
   const out = $('#stOut');

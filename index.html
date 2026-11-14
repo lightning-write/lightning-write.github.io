@@ -485,10 +485,10 @@ button.danger:disabled{opacity:.4}
         <button id="openBtn" class="icon" data-pop="openPop" aria-haspopup="true" aria-expanded="false" title="불러오기" aria-label="불러오기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
         <button id="exportBtn" class="icon" data-pop="exportMenu" aria-haspopup="true" aria-expanded="false" title="저장·내보내기" aria-label="저장·내보내기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg></button>
         <span class="sep"></span>
-        <button id="lenBtn" class="icon" data-tip="문장 · block" data-tip-d="번개 한 번에 한두 문장이 나옵니다. 누르면 한 문단(blocks)으로" aria-label="문장(block): 한두 문장. 누르면 문단으로"><svg id="lenIcS" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16M4 14h9"/></svg><svg id="lenIcP" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M4 6h16M4 10h16M4 14h16M4 18h9"/></svg></button>
+        <button id="lenBtn" class="icon" data-tip="block" data-tip-d="번개 한 번에 한두 문장이 나옵니다. 누르면 한 문단(blocks)으로" aria-label="block: 한두 문장. 누르면 blocks로"><svg id="lenIcS" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16M4 14h9"/></svg><svg id="lenIcP" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M4 6h16M4 10h16M4 14h16M4 18h9"/></svg></button>
         <button id="tidyBtn" class="icon" data-tip="build" data-tip-d="쓴 데까지 맞춤법·띄어쓰기·군더더기를 정리합니다. 바뀐 곳을 보고 받을 것만 고릅니다" aria-label="build: 쓴 데까지 정리"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13.5 4.5 6 6-2.5 2.5-6-6z"/><path d="M12.2 8.2 4.4 16a1.6 1.6 0 0 0 2.3 2.3l7.8-7.8"/></svg></button>
         <button id="fragBtn" class="icon" data-tip="bricks" data-tip-d="떠오른 소재를 모아 두는 조각함. 번개와 build가 꼭 맞는 자리에만 씁니다" aria-label="bricks: 조각함"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M9 14.3V19"/></svg><span id="fragN" class="badge"></span></button>
-        <button id="stormBtn" class="icon" data-tip="스토밍" data-tip-d="브레인스토밍으로 8페이지즈 개요를 짜고, 개요 완료로 인물표·연표를 만듭니다" aria-label="스토밍"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2 0 2.6-5 4.6-5s2.4 3 4.4 3 2.4-8 4.6-8S20 14 21 15"/><path d="M3 19h18"/></svg></button>
+        <button id="stormBtn" class="icon" data-tip="storming" data-tip-d="브레인스토밍으로 8페이지즈 개요를 짜고, 개요 완료로 인물표·연표를 만듭니다" aria-label="storming"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2 0 2.6-5 4.6-5s2.4 3 4.4 3 2.4-8 4.6-8S20 14 21 15"/><path d="M3 19h18"/></svg></button>
       </div>
       <button id="hideBtn" class="icon" title="메뉴 접기 (Esc)" aria-label="메뉴 접기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
     </div>
@@ -643,7 +643,7 @@ button.danger:disabled{opacity:.4}
 
 <div id="stormDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="stormTitle">
   <div class="sheet-box">
-    <header class="sheet-head"><h2 id="stormTitle">스토밍</h2><button id="stormClose" class="ghost" type="button">닫기</button></header>
+    <header class="sheet-head"><h2 id="stormTitle">storming</h2><button id="stormClose" class="ghost" type="button">닫기</button></header>
     <div class="sheet-body" id="stormBody">
       <details class="st-in" id="stInBox" open>
         <summary>브레인스토밍</summary>
@@ -654,7 +654,7 @@ button.danger:disabled{opacity:.4}
           <label><input id="stEnd" type="checkbox"> +1 엔드롤까지</label>
         </div>
       </details>
-      <div class="st-go"><button id="stGo" class="primary" type="button">스토밍</button><button id="stStop" type="button" hidden>멈추기</button><span id="stGoNote"></span></div>
+      <div class="st-go"><button id="stGo" class="primary" type="button">storming</button><button id="stStop" type="button" hidden>멈추기</button><span id="stGoNote"></span></div>
       <p id="stProg" role="status"></p>
       <div id="stRv" hidden></div>
       <section id="stOut" hidden></section>
