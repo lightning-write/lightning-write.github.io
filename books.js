@@ -43,6 +43,18 @@ async function readTxt(f){
   try{ text = new TextDecoder('utf-8', {fatal: true}).decode(buf); }catch(e){ text = new TextDecoder('euc-kr').decode(buf); }
   return text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').split('\n').map(l => ({runs: l ? [{t: l, b: false, i: false}] : [], chap: false}));
 }
+/* 글자 크기(h)를 가장 많이 쓴 크기 대비 비율(r)로 바꾼다 */
+function sizeRatio(paras){
+  const w = new Map();
+  for(const p of paras) for(const r of p.runs) if(r.h) w.set(r.h, (w.get(r.h) || 0) + r.t.length);
+  let base = 0, best = -1; for(const [h, n] of w) if(n > best){ best = n; base = h; }
+  for(const p of paras) for(const r of p.runs){
+    let q = r.h && base ? Math.round(r.h / base * 100) / 100 : 1;
+    if(Math.abs(q - 1) < 0.05) q = 1;
+    delete r.h; if(q !== 1) r.r = q;
+  }
+  return paras;
+}
 async function readDocx(z){
   const xml = await z.text('word/document.xml'); if(!xml) throw new Error('docx_empty');
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -55,12 +67,14 @@ async function readDocx(z){
     const sv = st ? (st.getAttributeNS(NS, 'val') || st.getAttribute('w:val') || '') : '';
     const chap = /^(heading|title|제목)/i.test(sv);
     let cur = {runs: [], chap};
-    const push = (t, b, i) => { if(!t) return; const l = cur.runs[cur.runs.length - 1]; if(l && l.b === b && l.i === i) l.t += t; else cur.runs.push({t, b, i}); };
+    let hh = 0;
+    const push = (t, b, i) => { if(!t) return; const l = cur.runs[cur.runs.length - 1]; if(l && l.b === b && l.i === i && l.h === hh) l.t += t; else cur.runs.push({t, b, i, h: hh}); };
     for(const r of p.getElementsByTagNameNS(NS, 'r')){
       // 글상자 안의 문단은 그 문단 차례에 따로 읽으므로, 이 문단에 바로 속한 글만 읽는다
       let a = r.parentNode; while(a && a !== p && !(a.namespaceURI === NS && a.localName === 'p')) a = a.parentNode;
       if(a !== p) continue;
       const rpr = kid(r, 'rPr'), b = !!rpr && on(kid(rpr, 'b')), i = !!rpr && on(kid(rpr, 'i'));
+      const sz = rpr && kid(rpr, 'sz'); hh = sz ? Number(sz.getAttributeNS(NS, 'val') || sz.getAttribute('w:val')) || 0 : 0;
       for(const c of r.children){
         if(c.namespaceURI !== NS) continue;
         if(c.localName === 't') push(c.textContent, b, i);
@@ -76,7 +90,7 @@ async function readDocx(z){
     paras.push(cur);
   }
   if(!paras.some(p => paraText(p).trim())) throw new Error('docx_empty');
-  return paras;
+  return sizeRatio(paras);
 }
 /* 글로 된 문서(HWP·HWPX·DOCX·TXT)를 문단 모델로 읽는다 */
 async function readTextDoc(f){
@@ -126,6 +140,7 @@ function rdText(paras){
     if(!p.runs.length) el.appendChild(document.createElement('br'));
     for(const r of p.runs){
       let n = document.createTextNode(r.t.replace(/\t/g, ' '));
+      if(r.r && r.r > 0.3 && r.r < 6){ const x = document.createElement('span'); x.style.fontSize = r.r + 'em'; x.appendChild(n); n = x; }
       if(r.i){ const x = document.createElement('i'); x.appendChild(n); n = x; }
       if(r.b){ const x = document.createElement('b'); x.appendChild(n); n = x; }
       el.appendChild(n);
