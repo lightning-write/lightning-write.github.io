@@ -240,7 +240,7 @@ function boltPrompt(c, frags, rej, len){
   const L = [];
   L.push('소설가가 초고를 쓰고 있다. [원고] 끝의 ▶ 자리에 바로 이어질 ' + (len === 'para' ? '한 문단(새 문장 3~5개)' : '새 문장 한두 개') + '를 써 줘.', '');
   L.push('- 반드시 ▶ 뒤에 올 새 문장을 쓴다. 마침표나 몇 글자만 붙이고 끝내지 않는다. [원고]에 이미 있는 문장을 다시 쓰지 않는다.');
-  L.push('- 작가의 문체를 그대로 따른다: 어휘, 어미, 시제, 시점, 문장 길이와 호흡, 대사 따옴표 방식.');
+  L.push('- 작가의 문체를 그대로 따른다: 어휘, 어미, 시제, 시점, 문장 길이와 호흡, 대사 따옴표 방식. 원고에 따옴표가 아직 없으면 굽은 큰따옴표(“ ”)로 쓴다.');
   L.push('- 바로 다음 순간을 쓴다. 장면을 건너뛰거나 이야기를 서둘러 매듭짓거나 교훈으로 정리하지 않는다.');
   if(c.mid) L.push('- ▶ 앞 문장이 아직 끝나지 않았다. 그 문장을 자연스럽게 마저 잇고, 이어서 새 문장을 ' + (len === 'para' ? '3~5개' : '한두 개') + ' 더 쓴다.');
   else if(!c.newPara) L.push('- ▶ 앞 문장은 끝났다(마침표가 빠졌을 수 있다). 그 문장에는 손대지 말고 다음 문장부터 쓴다.');
@@ -258,6 +258,27 @@ function boltPrompt(c, frags, rej, len){
   return L.join('\n');
 }
 const cleanGen = t => String(t || '').replace(/```[a-zA-Z]*\n?/g, '').replace(/▶/g, '').replace(/\s*\n+\s*/g, ' ').replace(/^\s+/, '');
+/* AI가 곧은 따옴표(")로 쓴 대사를, 원고가 쓰는 따옴표 모양에 맞춘다. 원고에 아직 따옴표가 없으면 한글 프로그램처럼 굽은 따옴표(“ ”)로 */
+function quoteStyle(before){
+  const n = re => (before.match(re) || []).length;
+  const curly = n(/[“”]/g), straight = n(/"/g), corner = n(/[「」]/g);
+  if(corner > curly && corner > straight) return 'corner';
+  if(straight > curly) return 'straight';
+  return 'curly';
+}
+function fitQuotes(text, before){
+  const st = quoteStyle(before || '');
+  if(st === 'straight') return text;
+  const O = st === 'corner' ? '「' : '“', C = st === 'corner' ? '」' : '”';
+  const para = String(before || '').split('\n').pop();
+  let open = (para.split(O).length - 1) > (para.split(C).length - 1);
+  let out = '';
+  for(const ch of text){
+    if(ch === '"'){ out += open ? C : O; open = !open; }
+    else { if(ch === O || ch === '“' || ch === '「') open = true; else if(ch === C || ch === '”' || ch === '」') open = false; out += ch; }
+  }
+  return out;
+}
 const keyOf = before => norm(before).slice(-150);
 function keepVisible(el){
   const rc = el.getBoundingClientRect(), box = scroller.getBoundingClientRect();
@@ -305,7 +326,7 @@ async function bolt(){
   const prevChar = c.head.slice(-1);
   let lead = null;
   const put = t => {
-    const s = cleanGen(t); if(!s) return;
+    const s = fitQuotes(cleanGen(t), c.before); if(!s) return;
     if(lead === null) lead = prevChar && !/\s/.test(prevChar) && !/^[.,!?…·:;)\]}'"”’」』〉》~]/.test(s) ? ' ' : '';
     span.classList.remove('wait'); span.textContent = lead + s;
   };
@@ -1364,5 +1385,5 @@ $('#setBtn').onclick = () => { if(narrow()) app.classList.remove('drawer'); open
 try{ document.execCommand('defaultParagraphSeparator', false, 'div'); }catch(e){}
 renderPrefs();
 loadLt();
-window.__lightning = {splitSents, parseResp, cdiff, computeRange, stNorm, ctMerge, pickFrags, boltPrompt, tidyPrompt, stormPrompt, prefs};
+window.__lightning = {fitQuotes, quoteStyle, splitSents, parseResp, cdiff, computeRange, stNorm, ctMerge, pickFrags, boltPrompt, tidyPrompt, stormPrompt, prefs};
 })();
