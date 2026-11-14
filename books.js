@@ -120,12 +120,20 @@ function rdReset(){
   rd.doc.textContent = ''; rd.doc.className = '';
   rd.scroll.onscroll = null; $('#rdInfo').textContent = '';
 }
+/* 읽기 모드 글자 크기: 편집기와 따로 기억(기기마다) */
+const RD_MIN = 12, RD_MAX = 44;
+const rdFsNow = () => { const v = Number(lsGet('rd-fs')); return v >= RD_MIN && v <= RD_MAX ? v : (parseFloat(paper.style.getPropertyValue('--fs')) || 16); };
+function rdFs(v){ v = Math.max(RD_MIN, Math.min(RD_MAX, Math.round(v))); rd.doc.style.setProperty('--fs', v + 'px'); $('#rdSm').disabled = v <= RD_MIN; $('#rdLg').disabled = v >= RD_MAX; return v; }
+function rdStep(d){ const v = rdFs(rdFsNow() + d); lsSet('rd-fs', v); toast('글자 크기 ' + v, 1200); }
+$('#rdSm').onclick = () => rdStep(-1); $('#rdLg').onclick = () => rdStep(1);
 function rdClose(){ rdReset(); rd.el.hidden = true; if(!narrow()) paper.focus({preventScroll: true}); }
 $('#rdClose').onclick = rdClose;
 function rdOpen(name){
   rdReset(); W.closePops(); $('#toast').hidden = true;
   $('#rdName').textContent = name;
-  for(const v of ['--font', '--fs', '--lh']) rd.doc.style.setProperty(v, paper.style.getPropertyValue(v));
+  for(const v of ['--font', '--lh']) rd.doc.style.setProperty(v, paper.style.getPropertyValue(v));
+  rdFs(rdFsNow());
+  $('#rdSize').hidden = false;
   rd.doc.innerHTML = '<p class="rd-wait">여는 중…</p>';
   rd.el.hidden = false; rd.scroll.scrollTop = 0; rd.scroll.focus({preventScroll: true});
   if(narrow()) $('#app').classList.remove('drawer');
@@ -251,7 +259,7 @@ async function rdPdf(f, token){
   if(rd.token !== token){ pdf.destroy(); return; }
   rd.pdf = pdf;
   const n = pdf.numPages, first = await pdf.getPage(1), v1 = first.getViewport({scale: 1});
-  rd.doc.textContent = ''; rd.doc.classList.add('pdf');
+  rd.doc.textContent = ''; rd.doc.classList.add('pdf'); $('#rdSize').hidden = true;
   const boxes = [];
   for(let i = 1; i <= n; i++){
     const b = document.createElement('div'); b.className = 'pdf-page'; b.dataset.n = i;

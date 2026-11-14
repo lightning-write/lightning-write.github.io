@@ -388,6 +388,11 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #rdHead{flex:none;display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;border-bottom:1px solid var(--line);background:var(--chrome);font-size:13px}
 #rdBadge{flex:none;font-size:11.5px;color:var(--accent-ink);background:var(--accent);border-radius:9px;padding:1px 9px}
 #rdName{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rdSize{flex:none;display:flex;gap:4px}
+#rdSize[hidden]{display:none}
+#rdSize button,#rdClose{font-family:var(--ui)}
+#rdSize button{min-width:40px;min-height:34px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;font-size:14px;cursor:pointer}
+#rdSize button:active{background:var(--accent)}
 #rdInfo{flex:none;color:var(--muted);font-variant-numeric:tabular-nums}
 #rdScroll{flex:1;min-height:0;overflow:auto;padding:0 20px;outline:none;overscroll-behavior:contain}
 #rdDoc{max-width:720px;margin:0 auto;padding:40px 0 120px;font-family:var(--font,var(--serif));font-size:var(--fs,16px);line-height:var(--lh,1.9);text-align:justify;word-break:var(--wb,normal);overflow-wrap:break-word;-webkit-user-select:text;user-select:text}
@@ -707,7 +712,7 @@ button.danger:disabled{opacity:.4}
   </div>
 </div>
 <div id="reader" hidden role="dialog" aria-modal="true" aria-labelledby="rdName">
-  <header id="rdHead"><span id="rdBadge">읽기 모드</span><b id="rdName"></b><span id="rdInfo"></span><button id="rdClose" type="button">닫기</button></header>
+  <header id="rdHead"><span id="rdBadge">읽기 모드</span><b id="rdName"></b><span id="rdInfo"></span><span id="rdSize" role="group" aria-label="글자 크기"><button id="rdSm" type="button" aria-label="글자 작게">가−</button><button id="rdLg" type="button" aria-label="글자 크게">가+</button></span><button id="rdClose" type="button">닫기</button></header>
   <div id="rdScroll" tabindex="0"><div id="rdDoc"></div></div>
 </div>
 
