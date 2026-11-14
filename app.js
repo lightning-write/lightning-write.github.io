@@ -930,6 +930,9 @@ const Drive = (() => {
           if(r.deleted) return undefined;
           if(!r.dirty){ outcome = 'updated'; return Object.assign({}, r, {title: d.title, html: d.html, chars: d.chars, updatedAt: d.updatedAt, trashed: !!d.trashed, trashedAt: d.trashedAt || null, lt: d.lt || null, dirty: false, fileId: f.id, rev: f.version}); }
           if(r.html === d.html && r.title === d.title && !!r.trashed === !!d.trashed){ const lt = mergeLt(r.lt, d.lt); return Object.assign({}, r, {lt, dirty: JSON.stringify(lt) !== JSON.stringify(d.lt || null), fileId: f.id, rev: f.version}); }
+          // 드라이브가 파일 버전을 몰래 올리는 일이 있어(미리보기·색인), 버전만 다르다고 남의 변경으로 보지 않는다.
+          // 드라이브의 내용이 바로 이 기기가 올린 것이면 충돌이 아니다
+          if(r.synced && d.updatedAt === r.synced) return Object.assign({}, r, {fileId: f.id, rev: f.version});
           outcome = 'conflict'; return Object.assign({}, r, {fileId: f.id, rev: f.version});
         });
         if(outcome === 'added') ch.added.add(id);
@@ -958,7 +961,7 @@ const Drive = (() => {
           try{ res = await upload(l.fileId, {name: create.name}, body, 'application/json'); }
           catch(e){ if(e.code === 'notfound') res = await upload(null, create, body, 'application/json'); else throw e; }
         } else res = await upload(null, create, body, 'application/json');
-        await DB.update(l.id, r => r ? Object.assign({}, r, {fileId: res.id, rev: res.version, dirty: r.updatedAt !== l.updatedAt}) : undefined);
+        await DB.update(l.id, r => r ? Object.assign({}, r, {fileId: res.id, rev: res.version, synced: l.updatedAt, dirty: r.updatedAt !== l.updatedAt}) : undefined);
       }
       lastSync = Date.now(); st = 'ok';
     }catch(e){
