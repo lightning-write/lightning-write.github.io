@@ -84,7 +84,17 @@ function parseSse(buf, final){
 /* 고른 모델(Flash 등)이 무료 한도에 닿으면, 목록에 있는 Flash-Lite로 한 번 대신 부른다 */
 async function generate(prompt, opt){
   opt = opt || {};
-  try{ return await generate1(prompt, opt); }
+  try{
+    // 구글 서버가 붐빌 때(500·503)는 잠깐 쉬었다가 두 번까지 다시 부른다
+    for(let n = 0; ; n++){
+      try{ return await generate1(prompt, opt); }
+      catch(e){
+        if(!(e && e.code === 'busy') || n >= 2 || (opt.signal && opt.signal.aborted)) throw e;
+        await new Promise(r => setTimeout(r, n ? 3500 : 1500));
+        if(opt.signal && opt.signal.aborted) throw err('cancelled');
+      }
+    }
+  }
   catch(e){
     if(!(e && e.code === 'rate_limited') || opt._fb || opt.model) throw e;
     if(info(model()).kind === 'flash-lite') throw e;
