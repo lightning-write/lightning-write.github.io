@@ -27,7 +27,7 @@ document.addEventListener('wongo:ailast', e => {
   const t = r.think ? r.think.replace(/[{}"]/g, '').replace(/thinking/, '생각 ').replace(':', ' ') : '생각 설정 없음';
   el.textContent = '마지막 호출: ' + r.model + ' · ' + (r.error ? (r.error === 'timeout' ? '시간 초과 ' + r.total + '초' : '오류 ' + r.error) : '첫 글 ' + (r.ttfb == null ? '-' : r.ttfb + '초') + ' · 전체 ' + r.total + '초') + ' · ' + t + (r.thoughts != null ? ' · 생각 토큰 ' + r.thoughts : '');
 });
-const prefs = Object.assign({len: 'short', tier: 'mid', enter2: true}, lsGet('prefs', {}));
+const prefs = Object.assign({len: 'short', tier: 'mid', enter2: true, smartq: true}, lsGet('prefs', {}));
 const savePrefs = () => lsSet('prefs', prefs);
 function renderPrefs(){
   const para = prefs.len === 'para', b = $('#lenBtn');
@@ -37,10 +37,12 @@ function renderPrefs(){
   $('#lenIcS').toggleAttribute('hidden', para); $('#lenIcP').toggleAttribute('hidden', !para);
   document.querySelectorAll('[data-tier]').forEach(x => { const on = x.dataset.tier === prefs.tier; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
   $('#aiEnter2').checked = !!prefs.enter2;
+  $('#aiSmartQ').checked = !!prefs.smartq;
 }
 $('#lenBtn').onclick = () => { prefs.len = prefs.len === 'para' ? 'short' : 'para'; savePrefs(); renderPrefs(); toast(prefs.len === 'para' ? 'blocks · 번개 한 번에 한 문단' : 'block · 번개 한 번에 한두 문장', 2200); };
 document.querySelectorAll('[data-tier]').forEach(b => { b.onclick = () => { prefs.tier = b.dataset.tier; savePrefs(); renderPrefs(); }; });
 $('#aiEnter2').onchange = () => { prefs.enter2 = $('#aiEnter2').checked; savePrefs(); };
+$('#aiSmartQ').onchange = () => { prefs.smartq = $('#aiSmartQ').checked; savePrefs(); };
 
 /* ================= 원고의 라이트닝 자료 lt ================= */
 const normLt = x => Object.assign({}, x || {}, {frags: x && Array.isArray(x.frags) ? x.frags.slice() : [], mark: (x && x.mark) || null});
@@ -398,6 +400,37 @@ async function commitIme(){
   paper.focus({preventScroll: true}); composing = false;
   if(rg && paper.contains(rg.endContainer)){ sel.removeAllRanges(); sel.addRange(rg); }
 }
+/* ================= 따옴표·꺾쇠 자동 바꿈 =================
+   " → “ ” , ' → ‘ ’ , <제목> → 〈제목〉 , <<제목>> → 《제목》 (직접 칠 때만. 붙여넣기·불러온 글은 건드리지 않는다) */
+function typoAt(ch){
+  if(!prefs.smartq || gen || !ch || !'"\'>'.includes(ch)) return;
+  const sel = getSelection(); if(!sel.rangeCount || !sel.isCollapsed) return;
+  const node = sel.anchorNode, off = sel.anchorOffset;
+  if(!node || node.nodeType !== 3 || !paper.contains(node) || node.data[off - 1] !== ch) return;
+  const before = node.data.slice(0, off - 1);
+  let from = off - 1, rep = null;
+  if(ch === '>'){
+    const t = before + '>';
+    let m = /<<([^<>]+)>>$/.exec(t);
+    if(m){ from = m.index; rep = '《' + m[1] + '》'; }
+    else if((m = /(^|[^<])<([^<>]+)>$/.exec(t))){ from = m.index + m[1].length; rep = '〈' + m[2] + '〉'; }
+  } else {
+    const prev = before.slice(-1);
+    let open = !prev || /[\s(\[{“‘「『〈《—–-]/.test(prev);
+    if(!open){
+      const blk = blockOf(node), r = document.createRange();
+      if(blk){ r.setStart(blk, 0); r.setEnd(node, off - 1); const tx = r.toString(), O = ch === '"' ? '“' : '‘', C = ch === '"' ? '”' : '’';
+        open = (tx.split(O).length - 1) <= (tx.split(C).length - 1); }
+    }
+    rep = ch === '"' ? (open ? '“' : '”') : (open ? '‘' : '’');
+  }
+  if(!rep) return;
+  const r = document.createRange(); r.setStart(node, from); r.setEnd(node, off);
+  sel.removeAllRanges(); sel.addRange(r);
+  document.execCommand('insertText', false, rep);
+}
+paper.addEventListener('input', e => { if(e.inputType === 'insertText' && !e.isComposing && e.data && e.data.length === 1) typoAt(e.data); });
+paper.addEventListener('compositionend', () => setTimeout(() => { const s = getSelection(), n = s.rangeCount && s.anchorNode; if(n && n.nodeType === 3 && s.isCollapsed) typoAt(n.data[s.anchorOffset - 1]); }, 0));
 paper.addEventListener('input', e => {
   hideSug();
   if(undoSt){ undoSt = null; if($('#noticeText').textContent === undoMsg) $('#notice').hidden = true; }
@@ -1385,5 +1418,5 @@ $('#setBtn').onclick = () => { if(narrow()) app.classList.remove('drawer'); open
 try{ document.execCommand('defaultParagraphSeparator', false, 'div'); }catch(e){}
 renderPrefs();
 loadLt();
-window.__lightning = {fitQuotes, quoteStyle, splitSents, parseResp, cdiff, computeRange, stNorm, ctMerge, pickFrags, boltPrompt, tidyPrompt, stormPrompt, prefs};
+window.__lightning = {typoAt, fitQuotes, quoteStyle, splitSents, parseResp, cdiff, computeRange, stNorm, ctMerge, pickFrags, boltPrompt, tidyPrompt, stormPrompt, prefs};
 })();
