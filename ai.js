@@ -110,7 +110,7 @@ async function generate1(prompt, opt){
     let r;
     try{ r = await fetch(BASE + '/models/' + encodeURIComponent(id) + ':streamGenerateContent?alt=sse', {method: 'POST', signal, headers: {'Content-Type': 'application/json', 'x-goog-api-key': k}, body: JSON.stringify(b)}); }
     catch(e){ throw (e && e.name === 'AbortError') ? err('cancelled') : err('network'); }
-    if(!r.ok) throw await httpErr(r);
+    if(!r.ok) throw Object.assign(await httpErr(r), {model: id});
     return r;
   };
   /* 답이 오래 안 오면 멈춘다: 첫 글자까지 90초, 그 뒤로는 30초 동안 아무것도 안 오면 */
@@ -185,7 +185,7 @@ function errorText(e){
   if(c === 'no_key') return 'AI 키가 아직 없습니다. 원고 목록 아래 톱니바퀴(설정) → lightning에서 Gemini API 키를 넣어 주세요.';
   if(c === 'no_model') return '모델을 아직 고르지 않았습니다. 설정(톱니바퀴) → lightning에서 모델을 골라 주세요.';
   if(c === 'auth') return 'AI 키가 맞지 않거나 쓸 수 없습니다. 설정(톱니바퀴) → lightning에서 키를 확인해 주세요.';
-  if(c === 'rate_limited') return '무료 사용량 한도에 닿았습니다 (분당 또는 하루). 잠시 뒤 다시 누르거나, 설정(톱니바퀴) → lightning에서 하루 한도가 넉넉한 Flash-Lite 모델로 바꿔 보세요.';
+  if(c === 'rate_limited'){ const lite = e.model && /flash-lite/.test(e.model); return '무료 사용량 한도에 닿았습니다' + (e.model ? ' (' + e.model + ')' : '') + '. 분당 한도면 1분쯤 뒤에, 하루 한도면 한국 시간 오후 5시쯤 새로 채워집니다.' + (lite ? ' Flash-Lite는 이미 하루 한도가 가장 넉넉한 모델입니다.' : ' 설정(톱니바퀴) → lightning에서 하루 한도가 넉넉한 Flash-Lite 모델로 바꿔 보세요.'); }
   if(c === 'model') return '이 모델을 지금 쓸 수 없습니다. 설정(톱니바퀴) → lightning에서 목록을 새로 받아 다른 모델을 골라 주세요.';
   if(c === 'refused') return 'AI가 이 대목은 쓰지 않겠다고 했습니다. 앞 글을 조금 바꿔 다시 해 보세요.';
   if(c === 'empty_completion') return '답이 비어 있었습니다' + (e.finish ? ' (' + e.finish + ')' : '') + '. 다시 눌러 주세요. 계속 이러면 설정(톱니바퀴) → lightning에서 다른 모델을 골라 보세요.';
