@@ -161,19 +161,19 @@ async function generateJson(prompt, opt){
 }
 function errorText(e){
   const c = e && e.code;
-  if(c === 'no_key') return 'AI 키가 아직 없습니다. 원고 목록 아래 톱니바퀴(설정) → 라이트닝에서 Gemini API 키를 넣어 주세요.';
-  if(c === 'no_model') return '모델을 아직 고르지 않았습니다. 설정(톱니바퀴) → 라이트닝에서 모델을 골라 주세요.';
-  if(c === 'auth') return 'AI 키가 맞지 않거나 쓸 수 없습니다. 설정(톱니바퀴) → 라이트닝에서 키를 확인해 주세요.';
-  if(c === 'rate_limited') return '무료 사용량 한도에 닿았습니다 (분당 또는 하루). 잠시 뒤 다시 누르거나, 설정(톱니바퀴) → 라이트닝에서 하루 한도가 넉넉한 Flash-Lite 모델로 바꿔 보세요.';
-  if(c === 'model') return '이 모델을 지금 쓸 수 없습니다. 설정(톱니바퀴) → 라이트닝에서 목록을 새로 받아 다른 모델을 골라 주세요.';
+  if(c === 'no_key') return 'AI 키가 아직 없습니다. 원고 목록 아래 톱니바퀴(설정) → lightning에서 Gemini API 키를 넣어 주세요.';
+  if(c === 'no_model') return '모델을 아직 고르지 않았습니다. 설정(톱니바퀴) → lightning에서 모델을 골라 주세요.';
+  if(c === 'auth') return 'AI 키가 맞지 않거나 쓸 수 없습니다. 설정(톱니바퀴) → lightning에서 키를 확인해 주세요.';
+  if(c === 'rate_limited') return '무료 사용량 한도에 닿았습니다 (분당 또는 하루). 잠시 뒤 다시 누르거나, 설정(톱니바퀴) → lightning에서 하루 한도가 넉넉한 Flash-Lite 모델로 바꿔 보세요.';
+  if(c === 'model') return '이 모델을 지금 쓸 수 없습니다. 설정(톱니바퀴) → lightning에서 목록을 새로 받아 다른 모델을 골라 주세요.';
   if(c === 'refused') return 'AI가 이 대목은 쓰지 않겠다고 했습니다. 앞 글을 조금 바꿔 다시 해 보세요.';
-  if(c === 'empty_completion') return '답이 비어 있었습니다' + (e.finish ? ' (' + e.finish + ')' : '') + '. 다시 눌러 주세요. 계속 이러면 설정(톱니바퀴) → 라이트닝에서 다른 모델을 골라 보세요.';
+  if(c === 'empty_completion') return '답이 비어 있었습니다' + (e.finish ? ' (' + e.finish + ')' : '') + '. 다시 눌러 주세요. 계속 이러면 설정(톱니바퀴) → lightning에서 다른 모델을 골라 보세요.';
   if(c === 'prompt_too_large') return '보낼 글이 너무 깁니다. 고른 부분만 정리해 보세요.';
   if(c === 'invalid_json') return '답을 읽지 못했습니다. 다시 눌러 주세요.';
   if(c === 'busy') return 'AI 서버가 붐빕니다. 잠시 뒤 다시 눌러 주세요.';
   if(c === 'network') return '인터넷에 연결되어 있지 않거나 연결이 끊겼습니다. 다시 눌러 주세요.';
   if(c === 'cancelled') return '멈췄습니다.';
-  if(c === 'timeout') return '답이 너무 오래 오지 않아 멈췄습니다. 다시 눌러 보고, 계속 이러면 설정(톱니바퀴) → 라이트닝에서 번개 속도를 「빠르게」로 하거나 다른 Flash-Lite 모델로 바꿔 보세요.';
+  if(c === 'timeout') return '답이 너무 오래 오지 않아 멈췄습니다. 다시 눌러 보고, 계속 이러면 설정(톱니바퀴) → lightning에서 번개 속도를 「빠르게」로 하거나 다른 Flash-Lite 모델로 바꿔 보세요.';
   return 'AI를 부르지 못했습니다' + (e && e.status ? ' (' + e.status + ')' : '') + '. 다시 눌러 주세요.';
 }
 window.__ai = {
