@@ -316,6 +316,7 @@ async function bolt(){
     let started = false;
     const res = await AI.generate(prompt, {signal: ctl.signal, tier: prefs.tier === 'deep' ? 'mid' : 'fast', onText: ({text}) => { if(!started){ started = true; showLive(true, '쓰는 중…'); } put(text); keepVisible(span); }});
     put(res.text);
+    if(res.fallback) toast('고른 모델이 무료 한도에 닿아 ' + res.fallback + '로 대신 썼습니다.', 5000);
     if(res.truncated) toast('길이 제한에 걸려 중간에 멈췄습니다.');
   }catch(e){
     if(e && e.text && e.code !== 'refused') put(e.text);

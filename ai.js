@@ -81,7 +81,21 @@ function parseSse(buf, final){
 }
 /* generate(prompt, {signal, onText({text}), tier:'fast'|'mid'|'deep', json:true, maxTokens, temperature})
    → {text, truncated}. 흐르는 대로 onText에 지금까지의 글을 준다 */
+/* 고른 모델(Flash 등)이 무료 한도에 닿으면, 목록에 있는 Flash-Lite로 한 번 대신 부른다 */
 async function generate(prompt, opt){
+  opt = opt || {};
+  try{ return await generate1(prompt, opt); }
+  catch(e){
+    if(!(e && e.code === 'rate_limited') || opt._fb || opt.model) throw e;
+    if(info(model()).kind === 'flash-lite') throw e;
+    const lite = lsGet('models', []).map(m => m && m.id).filter(id => id && info(id).kind === 'flash-lite');
+    if(!lite.length) throw e;
+    const alt = pickModel(lite);
+    try{ const res = await generate1(prompt, Object.assign({}, opt, {_fb: true, model: alt})); res.fallback = alt; return res; }
+    catch(e2){ throw e; }
+  }
+}
+async function generate1(prompt, opt){
   opt = opt || {};
   const k = key(); if(!k) throw err('no_key');
   const id = opt.model || model(); if(!id) throw err('no_model');
