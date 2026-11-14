@@ -272,8 +272,8 @@ async function rdPdf(f, token){
   let t = null; rd.scroll.onscroll = () => { if(t) return; t = setTimeout(() => { t = null; info(); }, 120); };
   info();
 }
-async function readFile(f){
-  const token = rdOpen(f.name);
+async function readFile(f, shown){
+  const token = rdOpen(shown || f.name);
   try{
     const kind = await sniff(f), ext = extOf(f.name);
     if(kind === 'pdf') await rdPdf(f, token);

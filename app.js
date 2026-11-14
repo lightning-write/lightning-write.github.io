@@ -989,27 +989,28 @@ const Drive = (() => {
   }
   /* ---- 드라이브에서 파일 열기: 드라이브 전체를 읽기 전용으로 훑어 HWP·HWPX·TXT·백업(.json)을 보여 준다 ---- */
   const READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
-  let ro = null, pickFiles = null, pickBusy = false;
+  let ro = null, pickFiles = null, pickBusy = false, pickMode = 'import';   // import: 원고로 불러오기, read: 읽기 모드로 보기
+  const GDOC = 'application/vnd.google-apps.document', DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   const savedRo = lsGet('ro', null);
   if(savedRo && savedRo.exp > Date.now()) ro = savedRo;
   const roOk = () => !!ro && ro.exp > Date.now();
-  const okExt = n => /\.(hwp|hwpx|txt|json)$/i.test(n || '');
+  const okExt = f => pickMode === 'read' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|pdf|epub)$/i.test(f.name || '')) : /\.(hwp|hwpx|txt|json)$/i.test(f.name || '');
   const dlg = $('#drvDlg'), dlgList = $('#drvList'), dlgMsg = $('#drvMsg'), dlgQ = $('#drvQ');
   const fmtSize = n => { n = Number(n) || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; };
   const fmtDay = t => { const d = new Date(t); return isNaN(d) ? '' : d.getFullYear() + '.' + (d.getMonth() + 1) + '.' + d.getDate(); };
   function drawPick(){
     const q = dlgQ.value.trim().toLowerCase();
-    const rows = (pickFiles || []).filter(f => !q || f.name.toLowerCase().includes(q));
+    const rows = (pickFiles || []).filter(f => okExt(f) && (!q || f.name.toLowerCase().includes(q)));
     dlgList.innerHTML = '';
     for(const f of rows.slice(0, 200)){
       const li = document.createElement('li'), b = document.createElement('button');
       b.className = 'mi'; b.type = 'button';
       b.innerHTML = '<span class="ms-t"></span><small></small>';
-      b.firstChild.textContent = f.name; b.lastChild.textContent = fmtDay(f.modifiedTime) + ' · ' + fmtSize(f.size);
+      b.firstChild.textContent = f.name; b.lastChild.textContent = fmtDay(f.modifiedTime) + ' · ' + (f.mimeType === GDOC ? '구글 문서' : fmtSize(f.size));
       b.onclick = () => openPicked(f);
       li.appendChild(b); dlgList.appendChild(li);
     }
-    if(pickFiles) dlgMsg.textContent = rows.length ? '' : (q ? '이름에 맞는 파일이 없습니다.' : '드라이브에서 HWP·HWPX·TXT 파일을 찾지 못했습니다.');
+    if(pickFiles) dlgMsg.textContent = rows.length ? '' : (q ? '이름에 맞는 파일이 없습니다.' : '드라이브에서 ' + (pickMode === 'read' ? 'HWP·HWPX·DOCX·TXT·PDF·EPUB·구글 문서' : 'HWP·HWPX·TXT') + ' 파일을 찾지 못했습니다.');
   }
   async function roFetch(path){
     let r;
@@ -1023,8 +1024,8 @@ const Drive = (() => {
     try{
       const out = []; let page = '';
       for(let i = 0; i < 5; i++){
-        const r = await (await roFetch('/drive/v3/files?q=' + enc("trashed=false and mimeType!='application/vnd.google-apps.folder'") + '&orderBy=modifiedTime%20desc&pageSize=200&fields=' + enc('nextPageToken,files(id,name,size,modifiedTime)') + (page ? '&pageToken=' + enc(page) : ''))).json();
-        for(const f of r.files || []) if(okExt(f.name)) out.push(f);
+        const r = await (await roFetch('/drive/v3/files?q=' + enc("trashed=false and mimeType!='application/vnd.google-apps.folder'") + '&orderBy=modifiedTime%20desc&pageSize=200&fields=' + enc('nextPageToken,files(id,name,size,modifiedTime,mimeType)') + (page ? '&pageToken=' + enc(page) : ''))).json();
+        for(const f of r.files || []) if(f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|json|pdf|epub)$/i.test(f.name || '')) out.push(f);
         page = r.nextPageToken || ''; if(!page) break;
       }
       pickFiles = out; drawPick();
@@ -1034,13 +1035,19 @@ const Drive = (() => {
   async function openPicked(f){
     dlgMsg.textContent = '「' + f.name + '」 가져오는 중…';
     try{
-      const blob = await (await roFetch('/drive/v3/files/' + f.id + '?alt=media')).blob();
+      const gdoc = f.mimeType === GDOC;   // 구글 문서는 워드(.docx)로 바꿔 받는다
+      const blob = await (await roFetch('/drive/v3/files/' + f.id + (gdoc ? '/export?mimeType=' + enc(DOCX) : '?alt=media'))).blob();
+      const file = new File([blob], gdoc ? f.name + '.docx' : f.name);
+      const mode = pickMode;
       closePick();
-      await importFile(new File([blob], f.name));
-    }catch(e){ dlgMsg.textContent = e.code === 'network' ? '인터넷에 연결되어 있지 않습니다.' : '파일을 가져오지 못했습니다.'; }
+      if(mode === 'read') await window.__books.readFile(file, f.name);
+      else await importFile(file);
+    }catch(e){ dlgMsg.textContent = e.code === 'network' ? '인터넷에 연결되어 있지 않습니다.' : e.code === 'http' && e.status === 403 ? '이 파일은 받을 수 없습니다 (구글 문서는 10MB까지).' : '파일을 가져오지 못했습니다.'; }
   }
   function closePick(){ dlg.hidden = true; }
-  async function pick(){
+  async function pick(mode){
+    pickMode = mode === 'read' ? 'read' : 'import';
+    $('#drvTitle').textContent = pickMode === 'read' ? '드라이브에서 읽기' : '드라이브에서 열기';
     if(!CID){ toast('구글 드라이브 설정이 아직 되어 있지 않습니다.'); return; }
     if(navigator.onLine === false){ toast('인터넷에 연결된 뒤 드라이브에서 열 수 있습니다.'); return; }
     if(!(await roAsk())) return;
@@ -1053,8 +1060,9 @@ const Drive = (() => {
   $('#drvReload').onclick = () => { if(!pickBusy) loadPick(); };
   dlg.addEventListener('click', e => { if(e.target === dlg) closePick(); });
   document.addEventListener('keydown', e => { if(e.key === 'Escape' && !dlg.hidden){ closePick(); e.stopPropagation(); } }, true);
-  $('#opDrive').onclick = () => setTimeout(pick, 0);
-  if(!CID) $('#opDrive').hidden = true;
+  $('#opDrive').onclick = () => setTimeout(() => pick('import'), 0);
+  $('#readDrive').onclick = () => setTimeout(() => pick('read'), 0);
+  if(!CID){ $('#opDrive').hidden = true; $('#readDrive').hidden = true; }
   /* 읽기 전용 권한: 한 시간 동안 이 기기에 기억해 둔다 */
   async function roAsk(){
     if(roOk()) return true;
