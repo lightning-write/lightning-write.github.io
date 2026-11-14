@@ -211,6 +211,10 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #tip span{display:block;opacity:.85;margin-top:1px}
 #stormBtn:not(.has){opacity:.7}
 #fragBtn{position:relative}
+.icon#lenBtn{flex-direction:column;gap:0;width:40px;line-height:1}
+#lenBtn svg{width:20px;height:19px;margin-top:1px}
+#lenBtn svg path{stroke-width:1.7}
+#lenTag{font-family:var(--ui);font-size:10px;font-weight:600;letter-spacing:-.02em;margin-top:-1px;padding-bottom:2px}
 .badge{position:absolute;top:1px;right:0;min-width:15px;height:15px;border-radius:8px;padding:0 3px;background:var(--accent);color:var(--accent-ink);font-size:10px;line-height:15px;text-align:center;font-variant-numeric:tabular-nums}
 .badge:empty{display:none}
 #paper .lt-new{text-decoration:underline dotted var(--accent);text-decoration-thickness:1.5px;text-underline-offset:.28em}
@@ -484,7 +488,7 @@ button.danger:disabled{opacity:.4}
         <button id="openBtn" class="icon" data-pop="openPop" aria-haspopup="true" aria-expanded="false" title="불러오기" aria-label="불러오기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
         <button id="exportBtn" class="icon" data-pop="exportMenu" aria-haspopup="true" aria-expanded="false" title="저장·내보내기" aria-label="저장·내보내기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg></button>
         <span class="sep"></span>
-        <button id="lenBtn" class="icon" data-tip="block" data-tip-d="번개 한 번에 한두 문장이 나옵니다. 누르면 한 문단(blocks)으로" aria-label="block: 한두 문장"><svg id="lenIcS" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="7" rx="1.5"/><path d="M9.5 10V8M14.5 10V8"/></svg><svg id="lenIcP" viewBox="0 0 24 24" aria-hidden="true" hidden><rect x="3" y="13" width="8.5" height="6" rx="1"/><rect x="12.5" y="13" width="8.5" height="6" rx="1"/><rect x="7.75" y="6" width="8.5" height="6" rx="1"/></svg></button>
+        <button id="lenBtn" class="icon" data-tip="문장 · block" data-tip-d="번개 한 번에 한두 문장이 나옵니다. 누르면 한 문단(blocks)으로" aria-label="문장(block): 한두 문장. 누르면 문단으로"><svg id="lenIcS" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 11h9"/></svg><svg id="lenIcP" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M4 5h16M4 9h16M4 13h16M4 17h9"/></svg><span id="lenTag" aria-hidden="true">문장</span></button>
         <button id="tidyBtn" class="icon" data-tip="build" data-tip-d="쓴 데까지 맞춤법·띄어쓰기·군더더기를 정리합니다. 바뀐 곳을 보고 받을 것만 고릅니다" aria-label="build: 쓴 데까지 정리"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13.5 4.5 6 6-2.5 2.5-6-6z"/><path d="M12.2 8.2 4.4 16a1.6 1.6 0 0 0 2.3 2.3l7.8-7.8"/></svg></button>
         <button id="fragBtn" class="icon" data-tip="bricks" data-tip-d="떠오른 소재를 모아 두는 조각함. 번개와 build가 꼭 맞는 자리에만 씁니다" aria-label="bricks: 조각함"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M9 14.3V19"/></svg><span id="fragN" class="badge"></span></button>
         <button id="stormBtn" class="icon" data-tip="스토밍" data-tip-d="브레인스토밍으로 8페이지즈 개요를 짜고, 개요 완료로 인물표·연표를 만듭니다" aria-label="스토밍"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2 0 2.6-5 4.6-5s2.4 3 4.4 3 2.4-8 4.6-8S20 14 21 15"/><path d="M3 19h18"/></svg></button>
