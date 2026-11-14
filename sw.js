@@ -1,9 +1,10 @@
 /* 오프라인 실행: 앱 파일을 기기에 보관해 두고, 인터넷이 없어도 열리게 한다.
    앱 파일을 고치면 VERSION을 올려야 기기에 새 버전이 들어간다. */
-const VERSION = 'wongo-v35';
+const VERSION = 'wongo-v36';
 const FONTS = 'wongo-fonts';
+const LIBS = 'wongo-libs';   // PDF 읽기 부품(vendor/): 처음 쓸 때 받아 보관한다. 앱 판이 바뀌어도 지우지 않는다
 const SHELL = [
-  './', 'index.html', 'ai.js', 'app.js', 'lightning.js', 'hangul.js', 'hwpx-template.js', 'config.js', 'manifest.webmanifest',
+  './', 'index.html', 'ai.js', 'app.js', 'lightning.js', 'books.js', 'hangul.js', 'hwpx-template.js', 'config.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'KoPub_Batang_Light.ttf'
 ];
 
@@ -14,7 +15,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== FONTS).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== FONTS && k !== LIBS).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -29,6 +30,14 @@ self.addEventListener('fetch', e => {
   if(url.origin === self.location.origin){
     if(req.mode === 'navigate'){
       e.respondWith(caches.match('index.html').then(r => r || fetch(req)));
+      return;
+    }
+    if(url.pathname.includes('/vendor/')){
+      e.respondWith(caches.open(LIBS).then(async c => {
+        const hit = await c.match(req, {ignoreSearch: true}); if(hit) return hit;
+        const res = await fetch(req); if(res.ok) c.put(req, res.clone());
+        return res;
+      }));
       return;
     }
     e.respondWith(caches.match(req, {ignoreSearch: true}).then(r => r || fetch(req)));

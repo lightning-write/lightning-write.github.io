@@ -377,6 +377,49 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .tl-meta input{width:9em}
 .tl-btns{margin-left:auto;display:flex;gap:2px}
 .tl-meta button{font-size:12px;padding:2px 8px;color:var(--muted)}
+/* ---------- 읽기 모드 · EPUB 만들기 · PDF(인쇄) ---------- */
+#reader{position:fixed;inset:0;z-index:60;background:var(--paper);color:var(--ink);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#reader[hidden]{display:none}
+#rdHead{flex:none;display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;border-bottom:1px solid var(--line);background:var(--chrome);font-size:13px}
+#rdBadge{flex:none;font-size:11.5px;color:var(--accent-ink);background:var(--accent);border-radius:9px;padding:1px 9px}
+#rdName{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rdInfo{flex:none;color:var(--muted);font-variant-numeric:tabular-nums}
+#rdScroll{flex:1;min-height:0;overflow:auto;padding:0 20px;outline:none;overscroll-behavior:contain}
+#rdDoc{max-width:720px;margin:0 auto;padding:40px 0 120px;font-family:var(--font,var(--serif));font-size:var(--fs,16px);line-height:var(--lh,1.9);text-align:justify;word-break:var(--wb,normal);overflow-wrap:break-word;-webkit-user-select:text;user-select:text}
+#rdDoc p{margin:0;min-height:1em}
+#rdDoc.indent p{text-indent:1em}
+#rdDoc .chap,#rdDoc h1,#rdDoc h2,#rdDoc h3,#rdDoc h4{font-weight:700;font-size:1.2em;margin:1.4em 0 .7em;text-align:left;text-indent:0;line-height:1.5}
+#rdDoc h1{font-size:1.5em}
+#rdDoc .rc{text-align:center;text-indent:0}
+#rdDoc .rr{text-align:right;text-indent:0}
+#rdDoc .rt{display:table;margin:0 auto;text-indent:0}
+#rdDoc img{max-width:100%;height:auto;display:block;margin:1em auto}
+#rdDoc .rd-part{margin:0 0 3em}
+#rdDoc .rd-part + .rd-part{border-top:1px solid var(--line);padding-top:3em}
+#rdDoc table{border-collapse:collapse;margin:1em 0;font-size:.92em}
+#rdDoc td,#rdDoc th{border:1px solid var(--line);padding:4px 8px;text-align:left}
+#rdDoc.pdf{max-width:900px;padding:16px 0 80px}
+.pdf-page{position:relative;margin:0 auto 14px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.18)}
+.pdf-page canvas{display:block;width:100%;height:100%}
+.rd-wait{padding:80px 0;text-align:center;color:var(--muted);font-family:var(--ui);font-size:14px}
+.ep-in{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--paper);font-size:14px}
+.ep-cover{display:flex;gap:14px;align-items:flex-start}
+#epCv{flex:none;width:132px;height:176px;border:1px solid var(--line);border-radius:4px;background:#EEEAE1}
+.ep-cbtns{display:flex;flex-direction:column;gap:8px;align-items:flex-start;min-width:0}
+.btnlike{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13.5px;background:var(--paper)}
+.btnlike:hover{background:var(--hover)}
+#printBox{display:none}
+@media print{
+  @page{size:A4;margin:25mm 22mm}
+  html,body{height:auto!important;overflow:visible!important;background:#fff!important;padding:0!important}
+  body > *:not(#printBox){display:none!important}
+  #printBox{display:block!important;color:#000;text-align:justify;overflow-wrap:break-word}
+  #printBox p{margin:0;min-height:1em;orphans:2;widows:2}
+  #printBox.indent p{text-indent:1em}
+  #printBox h1{font-size:1.6em;text-align:center;margin:0 0 2.2em;font-weight:700;text-indent:0}
+  #printBox .chap{font-weight:700;font-size:1.2em;margin:1.4em 0 .7em;text-align:left;text-indent:0;break-after:avoid}
+  #printBox .lt-new{text-decoration:none}
+}
 /* 창 안의 글과 입력 칸도 본문처럼 양쪽 정렬, 줄 바꿈은 본문 서식(글자/낱말)을 따른다 */
 .sheet-body p:not(.sep), .sheet-body li, .range .q, .doc p:not(.sep), .ft, .st-people, .st-def,
 #note, #stBrain, .st-ta, .tl textarea, #stCT span, #stProg {
@@ -478,12 +521,17 @@ button.danger:disabled{opacity:.4}
   <div id="openPop" class="pop menu" role="menu" hidden>
     <label id="importBtn" for="fileIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·TXT, 원고 백업(.json)</small></label>
     <button id="opDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>드라이브에 있는 HWP·HWPX·TXT 고르기</small></button>
+    <hr>
+    <label id="readBtn" for="readIn" class="mi" role="menuitem" tabindex="0">읽기 모드로 열기<small>HWP·HWPX·DOCX·TXT·PDF·EPUB. 보기만 하고 저장하지 않음</small></label>
+    <label id="convBtn" for="convIn" class="mi" role="menuitem" tabindex="0">문서를 EPUB으로 변환<small>HWP·HWPX·DOCX·TXT. 여러 파일도 한꺼번에</small></label>
   </div>
 
   <div id="exportMenu" class="pop menu" role="menu" hidden>
     <button id="exHwpx" class="mi" role="menuitem">한글 파일 (.hwpx)<small>이 기기에 저장</small></button>
     <button id="exDocx" class="mi" role="menuitem">Word 파일 (.docx)<small>이 기기에 저장</small></button>
     <button id="exTxt" class="mi" role="menuitem">텍스트 (.txt)<small>이 기기에 저장</small></button>
+    <button id="exEpub" class="mi" role="menuitem">전자책 (.epub)<small>크레마샤인용, 표지 자동</small></button>
+    <button id="exPdf" class="mi" role="menuitem">PDF<small>인쇄 창에서 'PDF로 저장'</small></button>
     <hr>
     <button id="exDrive" class="mi" role="menuitem">드라이브에 한글 파일 저장<small>'LWRITE' 폴더, 원고마다 한 파일</small></button>
     <hr>
@@ -649,8 +697,47 @@ button.danger:disabled{opacity:.4}
     </div>
   </div>
 </div>
+<div id="reader" hidden role="dialog" aria-modal="true" aria-labelledby="rdName">
+  <header id="rdHead"><span id="rdBadge">읽기 모드</span><b id="rdName"></b><span id="rdInfo"></span><button id="rdClose" type="button">닫기</button></header>
+  <div id="rdScroll" tabindex="0"><div id="rdDoc"></div></div>
+</div>
+
+<div id="epubDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="epTitleH">
+  <div class="sheet-box">
+    <header class="sheet-head"><h2 id="epTitleH">전자책(EPUB) 만들기</h2><button id="epClose" class="ghost" type="button">닫기</button></header>
+    <div class="sheet-body ai-body">
+      <p id="epWhat" class="ai-state"></p>
+      <div id="epOne">
+        <h3>제목</h3>
+        <input id="epTitle" class="ep-in" type="text" autocomplete="off" aria-label="제목">
+        <p id="epFirstBox"><label class="ai-chk"><input id="epFirst" type="checkbox"> 원고 첫 줄은 제목이라 본문에서 뺍니다</label></p>
+      </div>
+      <h3>작가 이름</h3>
+      <input id="epAuthor" class="ep-in" type="text" autocomplete="off" placeholder="표지와 첫 화면에 들어갑니다" aria-label="작가 이름">
+      <h3>표지</h3>
+      <div class="ep-cover">
+        <canvas id="epCv" width="300" height="400" aria-label="표지 미리 보기"></canvas>
+        <div class="ep-cbtns">
+          <button id="epAgain" type="button">다른 모양</button>
+          <label for="coverIn" id="epPick" class="btnlike" tabindex="0">내 그림 쓰기</label>
+          <button id="epAuto" type="button" hidden>자동 표지로</button>
+          <p id="epCoverNote" class="hint">제목과 작가 이름으로 표지를 그립니다. 흑백 전자잉크에서도 읽히는 먹색 그림입니다.</p>
+        </div>
+      </div>
+      <p class="hint">본문은 한 글자도 고치지 않고 그대로 옮깁니다. 장면 구분 별표는 가운데에 놓고 위아래를 한 줄씩 띄웁니다. 글꼴은 정하지 않아 기기에서 고른 글꼴로 보입니다.</p>
+      <p id="epMsg" class="hint ai-msg" aria-live="polite"></p>
+    </div>
+    <footer class="sheet-foot"><span></span><button id="epGo" class="primary" type="button">EPUB 만들기</button></footer>
+  </div>
+</div>
+
+<div id="printBox" aria-hidden="true"></div>
+
 <div id="toast" role="status" hidden></div>
   <input id="fileIn" type="file" class="vh" tabindex="-1" aria-hidden="true">
+  <input id="readIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept=".hwp,.hwpx,.docx,.txt,.pdf,.epub,application/pdf,application/epub+zip,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+  <input id="convIn" type="file" class="vh" tabindex="-1" aria-hidden="true" multiple accept=".hwp,.hwpx,.docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+  <input id="coverIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept="image/*">
 </div>
 <script src="config.js"></script>
 <script src="hwpx-template.js"></script>
@@ -658,5 +745,6 @@ button.danger:disabled{opacity:.4}
 <script src="ai.js"></script>
 <script src="app.js"></script>
 <script src="lightning.js"></script>
+<script src="books.js"></script>
 </body>
 </html>

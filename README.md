@@ -9,6 +9,9 @@
 - 휴지통(아이콘): 지운 원고는 30일간 보관 후 자동 삭제
 - HWP·HWPX·TXT 불러오기(이 기기·구글 드라이브), 한글(.hwpx)·Word·TXT로 저장
 - 원고는 먼저 기기에 저장되고, 드라이브에 연결해 두면 PC·휴대폰·태블릿이 서로 이어짐
+- **읽기 모드**(불러오기 → 읽기 모드로 열기): HWP·HWPX·DOCX·TXT·PDF·EPUB을 열어 보기만 합니다. 고칠 수 없고, 기기에도 드라이브에도 저장하지 않으며, 닫으면 사라집니다. 옛 워드(.doc)와 잠금(DRM) 걸린 전자책·암호 걸린 PDF는 열 수 없습니다. PDF를 읽는 부품(pdf.js)은 처음 PDF를 열 때 받아 두고 그 뒤로는 오프라인에서도 씁니다
+- **전자책(EPUB) 만들기**: 내보내기 → 전자책(.epub)으로 지금 원고를, 불러오기 → 문서를 EPUB으로 변환으로 HWP·HWPX·DOCX·TXT 파일을(여러 개면 묶음 .zip 하나로) 크레마샤인용 EPUB으로 만듭니다. 본문은 한 글자도 고치지 않고, 장면 구분 별표는 가운데 + 위아래 한 줄, 장 제목이 있으면 장마다 차례에 넣습니다. 표지는 제목·작가 이름으로 자동으로 그리며(「다른 모양」, 「내 그림 쓰기」), 작가 이름은 이 기기에 기억합니다. PDF → EPUB 변환은 없습니다
+- **PDF로 저장**: 내보내기 → PDF. 본문 글꼴·양쪽 정렬 그대로 인쇄 창을 띄우니 프린터(대상)를 'PDF로 저장'으로 고릅니다
 - **라이트닝**(앱 안에서 바로 AI를 부름, 무료 Gemini API): 번개(이어 쓰기), block/blocks, build(정리), bricks(조각함), 스토밍(8페이지즈 개요·인물표·연표), 위치 띠
 - 아이콘에 마우스를 올리면 이름과 하는 일이 말풍선으로 뜸
 
@@ -132,6 +135,8 @@
 | `index.html` | 화면 |
 | `app.js` | 편집, 기기 저장, 드라이브 동기화, 말풍선 |
 | `ai.js` | Gemini API 부르기(키·모델 저장, 모델 목록, 스트리밍, 오류 안내) |
+| `books.js` | 읽기 모드, EPUB 만들기(조판·표지), PDF(인쇄) |
+| `vendor/pdfjs/` | PDF 읽기 부품 pdf.js(Mozilla, Apache-2.0)와 글꼴 자료 |
 | `lightning.js` | 라이트닝: 번개·build·bricks·스토밍·위치 띠·설정 창(라이트닝) |
 | `hangul.js` | HWP·HWPX 읽기, HWPX 만들기 |
 | `hwpx-template.js` | HWPX 뼈대 ([python-hwpx](https://github.com/airmang/python-hwpx)의 Skeleton.hwpx, Apache-2.0) |

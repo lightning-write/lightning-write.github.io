@@ -1245,7 +1245,7 @@ $('#installBtn').onclick = async () => { if(!installEvt) return; installEvt.prom
 window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; });
 
 /* ---------- 시작 ---------- */
-window.__wongo = {paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, toast, outline, refreshList, prefs, savePrefs, narrow, closePops, chapRe, sceneRe, numRe, saveLt, mergeLt};
+window.__wongo = {download, fileBase, titleVal, setSave, importErrors, paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, toast, outline, refreshList, prefs, savePrefs, narrow, closePops, chapRe, sceneRe, numRe, saveLt, mergeLt};
 (async function boot(){
   applyPrefs();
   if(narrow()) drawer(false);

@@ -491,5 +491,5 @@ async function writeHwpx(paras, o, T){
   ]);
 }
 
-return {read, readHwp, readHwpx, writeHwpx, zip, _inflate: inflateJs};
+return {read, readHwp, readHwpx, writeHwpx, zip, unzip, _inflate: inflateJs};
 })();
