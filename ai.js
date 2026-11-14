@@ -106,7 +106,10 @@ async function generate(prompt, opt){
   if(opt.signal){ if(opt.signal.aborted) ctl.abort(); else opt.signal.addEventListener('abort', () => ctl.abort(), {once: true}); }
   const sig = ctl.signal;
   const run0 = run;
-  arm(90000);
+  const t0 = Date.now();
+  const rec = {model: id, tier: opt.tier || 'mid', think: JSON.stringify(think), ttfb: null, total: null, thoughts: null, out: null, finish: '', error: ''};
+  const note = (extra) => { Object.assign(rec, extra || {}); rec.total = Math.round((Date.now() - t0) / 100) / 10; if(rec.ttfb == null && rec.out) rec.ttfb = rec.total; api.last = rec; try{ document.dispatchEvent(new CustomEvent('wongo:ailast', {detail: rec})); }catch(e){} };
+  arm(45000);
   let r;
   try{
     try{ r = await run0(true, sig); }
@@ -116,33 +119,37 @@ async function generate(prompt, opt){
       if(think.thinkingLevel === 'minimal'){ think = {thinkingLevel: 'low'}; try{ r = await run0(true, sig); }catch(e2){ if(e2 && e2.code === 'thinking') r = await run0(false, sig); else throw e2; } }
       else r = await run0(false, sig);
     }
-  }catch(e){ clearTimeout(tm); if(timedOut) throw err('timeout'); throw e; }
+  }catch(e){ clearTimeout(tm); note({error: timedOut ? 'timeout' : (e && e.code) || 'error', think: JSON.stringify(think)}); if(timedOut) throw err('timeout', {model: id, secs: rec.total}); throw e; }
+  rec.think = JSON.stringify(think);
   const dec = new TextDecoder('utf-8');
   const reader = r.body.getReader();
   let buf = '', text = '', finish = '', blocked = '';
   try{
     for(;;){
       const {value, done} = await reader.read();
-      if(!done){ buf += dec.decode(value, {stream: true}); arm(text ? 30000 : 90000); }
+      if(!done){ buf += dec.decode(value, {stream: true}); arm(text ? 30000 : 45000); }
       const p = parseSse(buf, done); buf = p.rest;
       for(const d of p.events){
         let j; try{ j = JSON.parse(d); }catch(e){ continue; }
         if(j.promptFeedback && j.promptFeedback.blockReason) blocked = j.promptFeedback.blockReason;
         const c = j.candidates && j.candidates[0];
         if(!c) continue;
+        if(j.usageMetadata){ rec.thoughts = j.usageMetadata.thoughtsTokenCount || 0; rec.out = j.usageMetadata.candidatesTokenCount || rec.out; }
         if(c.finishReason) finish = c.finishReason;
         for(const part of (c.content && c.content.parts) || []) if(typeof part.text === 'string' && !part.thought) text += part.text;
       }
+      if(text && rec.ttfb == null) rec.ttfb = Math.round((Date.now() - t0) / 100) / 10;
       if(opt.onText && text) opt.onText({text});
       if(done) break;
     }
   }catch(e){
     clearTimeout(tm);
-    if(timedOut) throw err('timeout', {text});
+    if(timedOut){ note({error: 'timeout', finish}); throw err('timeout', {text, model: id, secs: rec.total}); }
     if(e && e.name === 'AbortError') throw err('cancelled', {text});
     throw err('network', {text});
   }
   clearTimeout(tm);
+  note({finish, out: rec.out || text.length});
   if(blocked || finish === 'SAFETY' || finish === 'PROHIBITED_CONTENT' || finish === 'BLOCKLIST') throw err('refused', {text});
   if(!text.trim()){
     // 생각만 하다 한도가 끝난 경우: 생각을 줄이고 한도를 늘려 한 번 더
@@ -173,10 +180,10 @@ function errorText(e){
   if(c === 'busy') return 'AI 서버가 붐빕니다. 잠시 뒤 다시 눌러 주세요.';
   if(c === 'network') return '인터넷에 연결되어 있지 않거나 연결이 끊겼습니다. 다시 눌러 주세요.';
   if(c === 'cancelled') return '멈췄습니다.';
-  if(c === 'timeout') return '답이 너무 오래 오지 않아 멈췄습니다. 다시 눌러 보고, 계속 이러면 설정(톱니바퀴) → lightning에서 번개 속도를 「빠르게」로 하거나 다른 Flash-Lite 모델로 바꿔 보세요.';
+  if(c === 'timeout') return '답이 ' + (e.secs ? Math.round(e.secs) + '초 동안 ' : '오래 ') + '오지 않아 멈췄습니다' + (e.model ? ' (' + e.model + ')' : '') + '. 다시 눌러 보고, 계속 이러면 설정(톱니바퀴) → lightning에서 다른 모델(Flash-Lite)을 골라 보세요.';
   return 'AI를 부르지 못했습니다' + (e && e.status ? ' (' + e.status + ')' : '') + '. 다시 눌러 주세요.';
 }
-window.__ai = {
+const api = window.__ai = {
   hasKey: () => !!key(), key, setKey: v => lsSet('key', String(v || '').trim()),
   model, setModel: v => lsSet('model', String(v || '').trim()),
   models: () => lsGet('models', []), setModels: v => lsSet('models', Array.isArray(v) ? v : []),

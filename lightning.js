@@ -22,6 +22,11 @@ function lsGet(k, d){ try{ const v = localStorage.getItem('wongo-lt-' + k); retu
 function lsSet(k, v){ try{ localStorage.setItem('wongo-lt-' + k, JSON.stringify(v)); }catch(e){} }
 
 /* ================= 설정 (이 기기) ================= */
+document.addEventListener('wongo:ailast', e => {
+  const r = e.detail, el = $('#aiLast'); if(!el || !r) return;
+  const t = r.think ? r.think.replace(/[{}"]/g, '').replace(/thinking/, '생각 ').replace(':', ' ') : '생각 설정 없음';
+  el.textContent = '마지막 호출: ' + r.model + ' · ' + (r.error ? (r.error === 'timeout' ? '시간 초과 ' + r.total + '초' : '오류 ' + r.error) : '첫 글 ' + (r.ttfb == null ? '-' : r.ttfb + '초') + ' · 전체 ' + r.total + '초') + ' · ' + t + (r.thoughts != null ? ' · 생각 토큰 ' + r.thoughts : '');
+});
 const prefs = Object.assign({len: 'short', tier: 'mid', enter2: true}, lsGet('prefs', {}));
 const savePrefs = () => lsSet('prefs', prefs);
 function renderPrefs(){
@@ -306,7 +311,7 @@ async function bolt(){
   };
   const ctl = new AbortController();
   gen = {ctl, span};
-  showLive(true, '생각하는 중…');
+  showLive(true, '생각하는 중 · ' + AI.model().replace(/^gemini-/, ''));
   try{
     let started = false;
     const res = await AI.generate(prompt, {signal: ctl.signal, tier: prefs.tier === 'deep' ? 'mid' : 'fast', onText: ({text}) => { if(!started){ started = true; showLive(true, '쓰는 중…'); } put(text); keepVisible(span); }});
