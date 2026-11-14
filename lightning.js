@@ -282,6 +282,7 @@ async function bolt(){
   if(!$('#tidyDlg').hidden) return;
   if(lastSug && (!lastSug.span.isConnected || !norm(lastSug.span.textContent))){ addRej(lastSug.key, lastSug.text); lastSug = null; }
   hideSug(); W.closePops();
+  await commitIme();
   normalizePaper();
   let r = caretRange();
   r.collapse(false);
@@ -359,7 +360,18 @@ function fixGap(){
 
 /* ================= 쓰기 ================= */
 paper.addEventListener('beforeinput', e => { if(gen) e.preventDefault(); });
-paper.addEventListener('compositionend', () => setTimeout(fixGap, 0));
+let composing = false;
+paper.addEventListener('compositionstart', () => { composing = true; });
+paper.addEventListener('compositionend', () => { composing = false; setTimeout(fixGap, 0); });
+/* 한글 입력기가 마지막 글자를 아직 확정하지 않은 채로 번개가 글을 끼워 넣으면, 크롬이 끼워 넣은 글 전체를 '입력 중'으로 보고 실선 밑줄을 그린다.
+   그래서 번개 전에 입력을 먼저 확정한다 (편집 칸에서 나갔다 들어오면 확정됨) */
+async function commitIme(){
+  if(!composing) return;
+  const sel = getSelection(), rg = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+  paper.blur(); await new Promise(r => setTimeout(r, 0));
+  paper.focus({preventScroll: true}); composing = false;
+  if(rg && paper.contains(rg.endContainer)){ sel.removeAllRanges(); sel.addRange(rg); }
+}
 paper.addEventListener('input', e => {
   hideSug();
   if(undoSt){ undoSt = null; if($('#noticeText').textContent === undoMsg) $('#notice').hidden = true; }
