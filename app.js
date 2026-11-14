@@ -745,31 +745,43 @@ $('#selSizeReset').onclick = () => {
 };
 
 
-$('#exHwpx').onclick = async () => { closeMenu(); flush(); saved(await download(fileBase() + '.hwpx', await hwpxBlob()), '한글 파일로 내보냄'); };
-$('#exDocx').onclick = async () => { closeMenu(); flush(); saved(await download(fileBase() + '.docx', await docxBlob(paragraphs(paper), {px: prefs.fs, lh: prefs.lh, indent: prefs.indent, ls: prefs.ls, font: curFont().dataset.w, fontKo: curFont().dataset.wk})), 'Word 파일로 내보냄'); };
-$('#exTxt').onclick = async () => {
-  closeMenu(); flush();
-  const txt = paragraphs(paper).map(p => p.runs.map(r => r.t).join('')).join('\r\n');
-  saved(await download(fileBase() + '.txt', new Blob(['﻿' + txt], {type: 'text/plain'})), '텍스트로 내보냄');
+/* 형식마다 {name, blob, mime}을 만든다. 이 기기 저장과 드라이브 저장이 같은 것을 쓴다 (전자책·PDF는 books.js) */
+const makers = {
+  hwpx: async () => ({name: fileBase() + '.hwpx', blob: new Blob([await hwpxBlob()], {type: 'application/hwp+zip'})}),
+  docx: async () => ({name: fileBase() + '.docx', blob: new Blob([await docxBlob(paragraphs(paper), {px: prefs.fs, lh: prefs.lh, indent: prefs.indent, ls: prefs.ls, font: curFont().dataset.w, fontKo: curFont().dataset.wk})], {type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'})}),
+  txt: async () => ({name: fileBase() + '.txt', blob: new Blob(['\uFEFF' + paragraphs(paper).map(p => p.runs.map(r => r.t).join('')).join('\r\n')], {type: 'text/plain'})})
 };
+const KIND_LABEL = {hwpx: '한글 파일', docx: '워드 파일', txt: '텍스트', epub: '전자책', pdf: 'PDF'};
+async function saveTo(dest, kind, out){
+  if(dest === 'drive'){
+    setSave('saving', '드라이브에 ' + KIND_LABEL[kind] + ' 올리는 중…');
+    try{
+      const res = await Drive.saveFile(cur.id, kind, out.name, out.blob);
+      setSave('saved', '드라이브에 저장함 · ' + out.name);
+      if(res && res.webViewLink) notice('드라이브 \'LWRITE\' 폴더에 「' + out.name + '」을(를) 저장했습니다.', '드라이브에서 열기', () => window.open(res.webViewLink, '_blank', 'noopener'));
+      return true;
+    }catch(e){ setSave('error', Drive.errorText(e)); return false; }
+  }
+  const ok = await download(out.name, out.blob);
+  saved(ok, KIND_LABEL[kind] + '로 저장함 · ' + out.name);
+  return ok;
+}
+function driveReady(){
+  if(Drive.enabled()) return true;
+  setSave('error', '구글 드라이브에 연결되어 있지 않습니다. 목록 아래에서 먼저 연결해 주세요');
+  toast('구글 드라이브에 연결되어 있지 않습니다. 원고 목록 아래 구름 단추로 먼저 연결해 주세요', 7000);
+  return false;
+}
+for(const kind of ['hwpx', 'docx', 'txt']){
+  $('#ex' + kind[0].toUpperCase() + kind.slice(1)).onclick = async () => { closeMenu(); await flush(); await saveTo('device', kind, await makers[kind]()); };
+  $('#dv' + kind[0].toUpperCase() + kind.slice(1)).onclick = async () => { closeMenu(); if(!driveReady()) return; await flush(); await saveTo('drive', kind, await makers[kind]()); };
+}
 $('#exBackup').onclick = async () => {
   closeMenu(); await flush();
   const all = (await DB.all()).filter(r => !r.deleted && !r.trashed).map(r => ({title: r.title, html: r.html, chars: r.chars, updatedAt: r.updatedAt, lt: r.lt || null}));
   const d = new Date(), pad = n => String(n).padStart(2, '0');
   saved(await download('원고백업_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.json', new Blob([JSON.stringify({app: 'wongo', v: 1, manuscripts: all})], {type: 'application/json'})), '원고 ' + all.length + '편을 백업했습니다');
 };
-$('#exDrive').onclick = async () => {
-  closeMenu();
-  if(!Drive.enabled()){ setSave('error', '구글 드라이브에 연결되어 있지 않습니다. 목록 아래에서 먼저 연결해 주세요'); return; }
-  await flush();
-  setSave('saving', '드라이브에 한글 파일 올리는 중…');
-  try{
-    const res = await Drive.saveHwpx(cur.id, titleVal(), await hwpxBlob());
-    setSave('saved', '드라이브에 저장함 · ' + titleVal() + '.hwpx');
-    if(res && res.webViewLink) notice('드라이브 \'LWRITE\' 폴더에 「' + titleVal() + '.hwpx」를 저장했습니다.', '드라이브에서 열기', () => window.open(res.webViewLink, '_blank', 'noopener'));
-  }catch(e){ setSave('error', Drive.errorText(e)); }
-};
-
 /* ---------- 구글 드라이브 ---------- */
 const Drive = (() => {
   const CID = ((window.WONGO_CONFIG || {}).googleClientId || '').trim();
@@ -977,24 +989,30 @@ const Drive = (() => {
   function disconnect(){
     wanted = false; lsSet('drive-on', false); token = null; exp = 0; lsDel('token'); st = 'idle'; render();
   }
-  async function saveHwpx(id, title, blob){
+  /* LWRITE 폴더에 저장. 같은 원고(key)·같은 형식(kind)의 파일이 있으면 그 파일을 고쳐 쓴다 */
+  async function saveFile(key, kind, name, blob){
     if(navigator.onLine === false) throw {code: 'network'};
     if(!tokenOk()) throw {code: 'auth'};
     const {root} = await ensureFolders();
-    const ex = await find("'" + root + "' in parents and trashed=false and appProperties has { key='wpId' and value='" + id + "' }", 'id');
-    const name = safeName(title) + '.hwpx';
+    const k = String(key).slice(0, 100).replace(/'/g, '');
+    const mime = blob.type || 'application/octet-stream';
+    const ex = await find("'" + root + "' in parents and trashed=false and appProperties has { key='wpId' and value='" + k + "' } and appProperties has { key='kind' and value='" + kind + "' }", 'id');
     try{
-      return await upload(ex.length ? ex[0].id : null, ex.length ? {name} : {name, parents: [root], mimeType: 'application/hwp+zip', appProperties: {kind: 'hwpx', wpId: id}}, blob, 'application/hwp+zip');
+      return await upload(ex.length ? ex[0].id : null, ex.length ? {name} : {name, parents: [root], mimeType: mime, appProperties: {kind, wpId: k}}, blob, mime);
     }catch(e){ if(e.code === 'notfound') folders = null; throw e; }
   }
+  const saveHwpx = (id, title, blob) => saveFile(id, 'hwpx', safeName(title) + '.hwpx', new Blob([blob], {type: 'application/hwp+zip'}));
   /* ---- 드라이브에서 파일 열기: 드라이브 전체를 읽기 전용으로 훑어 HWP·HWPX·TXT·백업(.json)을 보여 준다 ---- */
   const READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
-  let ro = null, pickFiles = null, pickBusy = false, pickMode = 'import';   // import: 원고로 불러오기, read: 읽기 모드로 보기
+  let ro = null, pickFiles = null, pickBusy = false, pickMode = 'import';   // import: 원고로 불러오기, read: 읽기 모드로 보기, convert: EPUB으로 바꾸기
   const GDOC = 'application/vnd.google-apps.document', DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   const savedRo = lsGet('ro', null);
   if(savedRo && savedRo.exp > Date.now()) ro = savedRo;
   const roOk = () => !!ro && ro.exp > Date.now();
-  const okExt = f => pickMode === 'read' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|pdf|epub)$/i.test(f.name || '')) : /\.(hwp|hwpx|txt|json)$/i.test(f.name || '');
+  const okExt = f => pickMode === 'read' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|pdf|epub)$/i.test(f.name || ''))
+    : pickMode === 'convert' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt)$/i.test(f.name || ''))
+    : /\.(hwp|hwpx|txt|json)$/i.test(f.name || '');
+  const MODE_TXT = {import: ['드라이브에서 열기', 'HWP·HWPX·TXT'], read: ['드라이브에서 읽기', 'HWP·HWPX·DOCX·TXT·PDF·EPUB·구글 문서'], convert: ['드라이브에서 EPUB으로 변환', 'HWP·HWPX·DOCX·TXT·구글 문서']};
   const dlg = $('#drvDlg'), dlgList = $('#drvList'), dlgMsg = $('#drvMsg'), dlgQ = $('#drvQ');
   const fmtSize = n => { n = Number(n) || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; };
   const fmtDay = t => { const d = new Date(t); return isNaN(d) ? '' : d.getFullYear() + '.' + (d.getMonth() + 1) + '.' + d.getDate(); };
@@ -1010,7 +1028,7 @@ const Drive = (() => {
       b.onclick = () => openPicked(f);
       li.appendChild(b); dlgList.appendChild(li);
     }
-    if(pickFiles) dlgMsg.textContent = rows.length ? '' : (q ? '이름에 맞는 파일이 없습니다.' : '드라이브에서 ' + (pickMode === 'read' ? 'HWP·HWPX·DOCX·TXT·PDF·EPUB·구글 문서' : 'HWP·HWPX·TXT') + ' 파일을 찾지 못했습니다.');
+    if(pickFiles) dlgMsg.textContent = rows.length ? '' : (q ? '이름에 맞는 파일이 없습니다.' : '드라이브에서 ' + MODE_TXT[pickMode][1] + ' 파일을 찾지 못했습니다.');
   }
   async function roFetch(path){
     let r;
@@ -1041,13 +1059,14 @@ const Drive = (() => {
       const mode = pickMode;
       closePick();
       if(mode === 'read') await window.__books.readFile(file, f.name);
+      else if(mode === 'convert') await window.__books.convertFiles([file], 'drive');
       else await importFile(file);
     }catch(e){ dlgMsg.textContent = e.code === 'network' ? '인터넷에 연결되어 있지 않습니다.' : e.code === 'http' && e.status === 403 ? '이 파일은 받을 수 없습니다 (구글 문서는 10MB까지).' : '파일을 가져오지 못했습니다.'; }
   }
   function closePick(){ dlg.hidden = true; }
   async function pick(mode){
-    pickMode = mode === 'read' ? 'read' : 'import';
-    $('#drvTitle').textContent = pickMode === 'read' ? '드라이브에서 읽기' : '드라이브에서 열기';
+    pickMode = MODE_TXT[mode] ? mode : 'import';
+    $('#drvTitle').textContent = MODE_TXT[pickMode][0];
     if(!CID){ toast('구글 드라이브 설정이 아직 되어 있지 않습니다.'); return; }
     if(navigator.onLine === false){ toast('인터넷에 연결된 뒤 드라이브에서 열 수 있습니다.'); return; }
     if(!(await roAsk())) return;
@@ -1062,7 +1081,8 @@ const Drive = (() => {
   document.addEventListener('keydown', e => { if(e.key === 'Escape' && !dlg.hidden){ closePick(); e.stopPropagation(); } }, true);
   $('#opDrive').onclick = () => setTimeout(() => pick('import'), 0);
   $('#readDrive').onclick = () => setTimeout(() => pick('read'), 0);
-  if(!CID){ $('#opDrive').hidden = true; $('#readDrive').hidden = true; }
+  $('#convDrive').onclick = () => setTimeout(() => pick('convert'), 0);
+  if(!CID){ $('#opDrive').hidden = true; $('#readDrive').hidden = true; $('#convDrive').hidden = true; }
   /* 읽기 전용 권한: 한 시간 동안 이 기기에 기억해 둔다 */
   async function roAsk(){
     if(roOk()) return true;
@@ -1129,7 +1149,7 @@ const Drive = (() => {
       if(CID && navigator.onLine !== false) loadGis().catch(() => {});  // 로그인 창이 막히지 않도록 미리 불러 둠
       if(CID && wanted) sync();
     },
-    soon, sync, saveHwpx, errorText, render, busy: () => running,
+    soon, sync, saveHwpx, saveFile, errorText, render, busy: () => running,
     connected: () => !!CID && wanted && tokenOk(),
     /* 드라이브의 원고(동기화 자료)와 이 앱이 만든 한글 파일을 모두 휴지통으로. 휴지통에서 30일 동안 되살릴 수 있다 */
     async wipe(){
@@ -1253,7 +1273,7 @@ $('#installBtn').onclick = async () => { if(!installEvt) return; installEvt.prom
 window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; });
 
 /* ---------- 시작 ---------- */
-window.__wongo = {download, fileBase, titleVal, setSave, importErrors, paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, toast, outline, refreshList, prefs, savePrefs, narrow, closePops, chapRe, sceneRe, numRe, saveLt, mergeLt};
+window.__wongo = {download, saveTo, driveReady, fileBase, titleVal, setSave, importErrors, paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, toast, outline, refreshList, prefs, savePrefs, narrow, closePops, chapRe, sceneRe, numRe, saveLt, mergeLt};
 (async function boot(){
   applyPrefs();
   if(narrow()) drawer(false);

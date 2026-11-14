@@ -466,8 +466,16 @@ function preview(){
     const pv = $('#epCv'); pv.getContext('2d').drawImage(full, 0, 0, pv.width, pv.height);
   }, 150);
 }
-function openEpub(docs, what){
-  job = {docs, seed: 0, img: null, busy: false};
+function setDest(d){
+  if(!job) return;
+  job.dest = d === 'drive' && W.Drive.enabled() ? 'drive' : 'device';
+  document.querySelectorAll('[data-dest]').forEach(b => { const on = b.dataset.dest === job.dest; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  const many = job.docs.length > 1;
+  $('#epGo').textContent = (many ? 'EPUB ' + job.docs.length + '개 ' : 'EPUB ') + (job.dest === 'drive' ? '드라이브에 저장' : '만들기');
+}
+document.querySelectorAll('[data-dest]').forEach(b => { b.onclick = () => setDest(b.dataset.dest); });
+function openEpub(docs, what, dest){
+  job = {docs, seed: 0, img: null, busy: false, dest: 'device'};
   const one = docs.length === 1, d = docs[0];
   $('#epWhat').textContent = what;
   $('#epOne').querySelector('h3').hidden = !one; $('#epTitle').hidden = !one;
@@ -479,7 +487,8 @@ function openEpub(docs, what){
   $('#epAuto').hidden = true; $('#epAgain').hidden = false;
   $('#epCoverNote').textContent = one ? '제목과 작가 이름으로 표지를 그립니다. 흑백 전자잉크에서도 읽히는 먹색 그림입니다.' : '파일마다 제목에 맞춰 표지를 그립니다. 미리 보기는 첫 파일입니다.';
   $('#epMsg').textContent = ''; $('#epGo').disabled = false;
-  $('#epGo').textContent = one ? 'EPUB 만들기' : 'EPUB ' + docs.length + '개 만들기';
+  $('#epDestBox').hidden = !W.Drive.enabled();
+  setDest(dest);
   W.closePops(); if(narrow()) $('#app').classList.remove('drawer');
   $('#epubDlg').hidden = false;
   preview();
@@ -523,71 +532,70 @@ $('#epGo').onclick = async () => {
       const blob = await buildEpub(title, author, paras, await toJpeg(cv));
       out.push({name: safeName(title) + '_' + safeName(author) + '.epub', blob});
     }
-    let ok;
-    if(out.length === 1) ok = await W.download(out[0].name, out[0].blob);
+    let ok, msg;
+    if(j.dest === 'drive'){
+      for(let i = 0; i < out.length; i++){
+        $('#epMsg').textContent = '드라이브에 올리는 중… ' + (out.length > 1 ? (i + 1) + ' / ' + out.length : '');
+        out[i].res = await W.Drive.saveFile(j.docs[i].key, 'epub', out[i].name, out[i].blob);
+      }
+      ok = true; msg = out.length === 1 ? '드라이브 \'LWRITE\' 폴더에 「' + out[0].name + '」을(를) 저장했습니다' : '드라이브 \'LWRITE\' 폴더에 EPUB ' + out.length + '권을 저장했습니다';
+      W.setSave('saved', '드라이브에 저장함 · ' + (out.length === 1 ? out[0].name : 'EPUB ' + out.length + '권'));
+      if(out.length === 1 && out[0].res && out[0].res.webViewLink){ const link = out[0].res.webViewLink; W.notice(msg + '.', '드라이브에서 열기', () => window.open(link, '_blank', 'noopener')); msg = ''; }
+    } else if(out.length === 1){ ok = await W.download(out[0].name, out[0].blob); msg = '「' + out[0].name + '」을(를) 만들었습니다'; }
     else {
       const seen = new Map(), files = [];
       for(const o of out){ const n = seen.get(o.name) || 0; seen.set(o.name, n + 1); files.push({name: n ? o.name.replace(/\.epub$/, ' (' + (n + 1) + ').epub') : o.name, data: new Uint8Array(await o.blob.arrayBuffer()), store: true}); }
       ok = await W.download('EPUB ' + out.length + '권.zip', new Blob([await Hangul.zip(files)], {type: 'application/zip'}));
+      msg = 'EPUB ' + out.length + '권을 묶음 파일(.zip)로 만들었습니다. 풀어서 쓰세요';
     }
     if(job === j) closeEpub();
-    toast(ok === false ? '저장을 취소했습니다' : out.length === 1 ? '「' + out[0].name + '」을(를) 만들었습니다' : 'EPUB ' + out.length + '권을 묶음 파일(.zip)로 만들었습니다. 풀어서 쓰세요', 6000);
+    if(ok === false || msg) toast(ok === false ? '저장을 취소했습니다' : msg, 6000);
   }catch(e){
-    if(job === j){ j.busy = false; $('#epGo').disabled = false; $('#epMsg').textContent = e && e.message === 'empty' ? '본문에 글이 없습니다.' : 'EPUB을 만들지 못했습니다. 다시 눌러 주세요.'; }
+    if(job === j){ j.busy = false; $('#epGo').disabled = false; $('#epMsg').textContent = e && e.message === 'empty' ? '본문에 글이 없습니다.' : e && e.code ? W.Drive.errorText(e) : 'EPUB을 만들지 못했습니다. 다시 눌러 주세요.'; }
   }
 };
 /* 지금 원고 → EPUB */
-$('#exEpub').onclick = async () => {
-  W.closePops(); await W.flush();
+async function epubFromMs(dest){
+  W.closePops(); if(dest === 'drive' && !W.driveReady()) return;
+  await W.flush();
   const paras = W.paragraphs(paper), title = W.titleVal();
   if(!paras.some(p => paraText(p).trim())){ toast('원고에 글이 없습니다', 4000); return; }
-  openEpub([{stem: title, title, paras, first: firstLine(paras)}], '지금 원고를 전자책으로 만듭니다.');
-};
-/* 문서 파일 → EPUB */
-$('#convIn').onchange = async () => {
-  const fs = [...$('#convIn').files]; $('#convIn').value = ''; if(!fs.length) return;
+  openEpub([{key: W.cur().id, stem: title, title, paras, first: firstLine(paras)}], '지금 원고를 전자책으로 만듭니다.', dest);
+}
+$('#exEpub').onclick = () => epubFromMs('device');
+$('#dvEpub').onclick = () => epubFromMs('drive');
+/* 문서 파일 → EPUB. from: 'device' | 'drive' (저장할 곳의 처음 값) */
+async function convertFiles(fs, from){
   W.closePops(); toast('문서를 읽는 중…', 20000);
   const docs = [], bad = [];
   for(const f of fs){
     try{
       const paras = await readTextDoc(f);
       if(!paras.some(p => paraText(p).trim())) throw new Error('empty');
-      docs.push({name: f.name, stem: stemOf(f.name), paras, first: firstLine(paras)});
+      const stem = stemOf(f.name).replace(/\.docx$/i, '');
+      docs.push({key: 'conv:' + stem, stem, paras, first: firstLine(paras)});
     }catch(e){ bad.push(f.name + ': ' + errText(e)); }
   }
   $('#toast').hidden = true;
   if(!docs.length){ toast(bad[0] || '읽을 수 있는 문서가 없습니다', 9000); return; }
   if(bad.length) toast('읽지 못한 파일 ' + bad.length + '개는 뺐습니다 — ' + bad[0], 9000);
-  openEpub(docs, docs.length === 1 ? '「' + docs[0].name + '」을(를) 전자책으로 바꿉니다.' : '문서 ' + docs.length + '개를 전자책으로 바꿉니다. 묶음 파일(.zip) 하나로 저장됩니다.');
-};
+  openEpub(docs, docs.length === 1 ? '「' + docs[0].stem + '」을(를) 전자책으로 바꿉니다.' : '문서 ' + docs.length + '개를 전자책으로 바꿉니다.', from);
+}
+$('#convIn').onchange = () => { const fs = [...$('#convIn').files]; $('#convIn').value = ''; if(fs.length) convertFiles(fs, 'device'); };
 
-/* ================= PDF: 본문 서식 그대로 인쇄 창 ================= */
-$('#exPdf').onclick = async () => {
-  W.closePops(); await W.flush();
+/* ================= PDF 파일 (pdfout.js) ================= */
+async function pdfOut(){
+  await W.flush();
   const paras = W.paragraphs(paper), title = W.titleVal();
-  if(!paras.some(p => paraText(p).trim())){ toast('원고에 글이 없습니다', 4000); return; }
-  const box = $('#printBox'); box.textContent = '';
-  box.style.fontFamily = paper.style.getPropertyValue('--font') || '';
-  box.style.fontSize = (W.prefs.fs * .75) + 'pt'; box.style.lineHeight = String(W.prefs.lh);
-  box.className = W.prefs.indent ? 'indent' : '';
-  if(!same(firstLine(paras), title) && title !== '제목 없는 원고'){ const h = document.createElement('h1'); h.textContent = title; box.appendChild(h); }
-  for(const p of paras){
-    const el = document.createElement('p'); if(isChap(p)) el.className = 'chap';
-    if(!p.runs.length) el.appendChild(document.createElement('br'));
-    for(const r of p.runs){
-      let n = document.createTextNode(r.t.replace(/\t/g, ' '));
-      if(r.i){ const x = document.createElement('i'); x.appendChild(n); n = x; }
-      if(r.b){ const x = document.createElement('b'); x.appendChild(n); n = x; }
-      el.appendChild(n);
-    }
-    box.appendChild(el);
-  }
-  const old = document.title; document.title = W.fileBase();
-  const done = () => { document.title = old; box.textContent = ''; window.removeEventListener('afterprint', done); };
-  window.addEventListener('afterprint', done);
-  toast("인쇄 창에서 프린터(대상)를 'PDF로 저장'으로 고르세요", 8000);
-  setTimeout(() => { try{ window.print(); }catch(e){ done(); toast('이 화면에서는 인쇄 창을 열 수 없습니다. 크롬이나 사파리에서 열어 주세요', 8000); } }, 250);
-};
+  if(!paras.some(p => paraText(p).trim())){ toast('원고에 글이 없습니다', 4000); return null; }
+  W.setSave('saving', 'PDF 만드는 중…');
+  try{
+    const res = await PdfOut.make(paras, {title: title === '제목 없는 원고' ? '' : title, author: lsGet('author') || '', fs: W.prefs.fs, lh: W.prefs.lh, indent: W.prefs.indent, sceneRe: W.sceneRe, chapRe: W.chapRe});
+    return {name: W.fileBase() + '.pdf', blob: res.blob};
+  }catch(e){ W.setSave('error', 'PDF를 만들지 못했습니다' + (e && e.message === 'pdf_font' ? ' (글꼴 파일을 읽지 못함)' : '')); return null; }
+}
+$('#exPdf').onclick = async () => { W.closePops(); const o = await pdfOut(); if(o) await W.saveTo('device', 'pdf', o); };
+$('#dvPdf').onclick = async () => { W.closePops(); if(!W.driveReady()) return; const o = await pdfOut(); if(o) await W.saveTo('drive', 'pdf', o); };
 
 /* ================= 키 ================= */
 window.addEventListener('keydown', e => {
@@ -600,5 +608,5 @@ window.addEventListener('keydown', e => {
   }
 }, true);
 
-window.__books = {readTextDoc, buildEpub, drawCover, readFile};
+window.__books = {readTextDoc, buildEpub, drawCover, readFile, convertFiles};
 })();

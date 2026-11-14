@@ -104,6 +104,11 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #exportMenu button{border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:6px}
 #exportMenu button:hover{background:var(--hover)}
 #exportMenu small{display:block;color:var(--muted);font-size:11.5px}
+.mh{padding:6px 10px 2px;font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.02em}
+.mh small{display:block;font-weight:400;color:var(--muted);font-size:11.5px;letter-spacing:0;margin-top:1px}
+.fmts{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;padding:2px 4px 4px}
+#exportMenu .fmt,.fmt{text-align:center;padding:7px 2px;width:auto;font-size:13.5px}
+#exportMenu{min-width:300px}
 #exportMenu hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
 
 #findbox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-block:0 9px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -408,18 +413,6 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .ep-cbtns{display:flex;flex-direction:column;gap:8px;align-items:flex-start;min-width:0}
 .btnlike{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13.5px;background:var(--paper)}
 .btnlike:hover{background:var(--hover)}
-#printBox{display:none}
-@media print{
-  @page{size:A4;margin:25mm 22mm}
-  html,body{height:auto!important;overflow:visible!important;background:#fff!important;padding:0!important}
-  body > *:not(#printBox){display:none!important}
-  #printBox{display:block!important;color:#000;text-align:justify;overflow-wrap:break-word}
-  #printBox p{margin:0;min-height:1em;orphans:2;widows:2}
-  #printBox.indent p{text-indent:1em}
-  #printBox h1{font-size:1.6em;text-align:center;margin:0 0 2.2em;font-weight:700;text-indent:0}
-  #printBox .chap{font-weight:700;font-size:1.2em;margin:1.4em 0 .7em;text-align:left;text-indent:0;break-after:avoid}
-  #printBox .lt-new{text-decoration:none}
-}
 /* 창 안의 글과 입력 칸도 본문처럼 양쪽 정렬, 줄 바꿈은 본문 서식(글자/낱말)을 따른다 */
 .sheet-body p:not(.sep), .sheet-body li, .range .q, .doc p:not(.sep), .ft, .st-people, .st-def,
 #note, #stBrain, .st-ta, .tl textarea, #stCT span, #stProg {
@@ -519,24 +512,39 @@ button.danger:disabled{opacity:.4}
     <label class="pop-row">첫 줄 들여쓰기 <input id="indent" type="checkbox" checked></label>
   </div>
   <div id="openPop" class="pop menu" role="menu" hidden>
+    <div class="mh">편집 모드<small>원고로 불러와 고칩니다</small></div>
     <label id="importBtn" for="fileIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·TXT, 원고 백업(.json)</small></label>
-    <button id="opDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>드라이브에 있는 HWP·HWPX·TXT 고르기</small></button>
+    <button id="opDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>HWP·HWPX·TXT, 원고 백업(.json)</small></button>
     <hr>
-    <label id="readBtn" for="readIn" class="mi" role="menuitem" tabindex="0">읽기 모드: 이 기기의 파일<small>HWP·HWPX·DOCX·TXT·PDF·EPUB. 보기만 하고 저장하지 않음</small></label>
-    <button id="readDrive" class="mi" role="menuitem">읽기 모드: 구글 드라이브의 파일<small>위 형식과 구글 문서. 보기만 하고 저장하지 않음</small></button>
-    <label id="convBtn" for="convIn" class="mi" role="menuitem" tabindex="0">문서를 EPUB으로 변환<small>HWP·HWPX·DOCX·TXT. 여러 파일도 한꺼번에</small></label>
+    <div class="mh">읽기 모드<small>보기만 하고 저장하지 않습니다</small></div>
+    <label id="readBtn" for="readIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·DOCX·TXT·PDF·EPUB</small></label>
+    <button id="readDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>위 형식과 구글 문서</small></button>
+    <hr>
+    <div class="mh">변환 모드<small>문서를 크레마샤인용 전자책(EPUB)으로</small></div>
+    <label id="convBtn" for="convIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·DOCX·TXT, 여러 파일도 한꺼번에</small></label>
+    <button id="convDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>HWP·HWPX·DOCX·TXT와 구글 문서</small></button>
   </div>
 
   <div id="exportMenu" class="pop menu" role="menu" hidden>
-    <button id="exHwpx" class="mi" role="menuitem">한글 파일 (.hwpx)<small>이 기기에 저장</small></button>
-    <button id="exDocx" class="mi" role="menuitem">Word 파일 (.docx)<small>이 기기에 저장</small></button>
-    <button id="exTxt" class="mi" role="menuitem">텍스트 (.txt)<small>이 기기에 저장</small></button>
-    <button id="exEpub" class="mi" role="menuitem">전자책 (.epub)<small>크레마샤인용, 표지 자동</small></button>
-    <button id="exPdf" class="mi" role="menuitem">PDF<small>인쇄 창에서 'PDF로 저장'</small></button>
+    <div class="mh">이 기기에 저장</div>
+    <div class="fmts">
+      <button id="exHwpx" class="mi fmt" role="menuitem">한글<small>.hwpx</small></button>
+      <button id="exDocx" class="mi fmt" role="menuitem">워드<small>.docx</small></button>
+      <button id="exTxt" class="mi fmt" role="menuitem">텍스트<small>.txt</small></button>
+      <button id="exEpub" class="mi fmt" role="menuitem">전자책<small>.epub</small></button>
+      <button id="exPdf" class="mi fmt" role="menuitem">PDF<small>.pdf</small></button>
+    </div>
     <hr>
-    <button id="exDrive" class="mi" role="menuitem">드라이브에 한글 파일 저장<small>'LWRITE' 폴더, 원고마다 한 파일</small></button>
+    <div class="mh">구글 드라이브에 저장<small>'LWRITE' 폴더. 원고마다 형식별로 한 파일을 고쳐 씁니다</small></div>
+    <div class="fmts">
+      <button id="dvHwpx" class="mi fmt" role="menuitem">한글<small>.hwpx</small></button>
+      <button id="dvDocx" class="mi fmt" role="menuitem">워드<small>.docx</small></button>
+      <button id="dvTxt" class="mi fmt" role="menuitem">텍스트<small>.txt</small></button>
+      <button id="dvEpub" class="mi fmt" role="menuitem">전자책<small>.epub</small></button>
+      <button id="dvPdf" class="mi fmt" role="menuitem">PDF<small>.pdf</small></button>
+    </div>
     <hr>
-    <button id="exBackup" class="mi" role="menuitem">모든 원고 백업 (.json)<small>다른 기기·앱으로 옮길 때</small></button>
+    <button id="exBackup" class="mi" role="menuitem">모든 원고 백업 (.json)<small>이 기기에 저장. 다른 기기·앱으로 옮길 때</small></button>
   </div>
 
   <div id="band" hidden></div>
@@ -726,13 +734,13 @@ button.danger:disabled{opacity:.4}
         </div>
       </div>
       <p class="hint">본문은 한 글자도 고치지 않고 그대로 옮깁니다. 장면 구분 별표는 가운데에 놓고 위아래를 한 줄씩 띄웁니다. 글꼴은 정하지 않아 기기에서 고른 글꼴로 보입니다.</p>
+      <div id="epDestBox"><h3>저장할 곳</h3>
+        <p><span class="seg" role="group" aria-label="저장할 곳"><button class="seg-b" type="button" data-dest="device">이 기기</button><button class="seg-b" type="button" data-dest="drive">구글 드라이브 (LWRITE 폴더)</button></span></p></div>
       <p id="epMsg" class="hint ai-msg" aria-live="polite"></p>
     </div>
     <footer class="sheet-foot"><span></span><button id="epGo" class="primary" type="button">EPUB 만들기</button></footer>
   </div>
 </div>
-
-<div id="printBox" aria-hidden="true"></div>
 
 <div id="toast" role="status" hidden></div>
   <input id="fileIn" type="file" class="vh" tabindex="-1" aria-hidden="true">
@@ -746,6 +754,7 @@ button.danger:disabled{opacity:.4}
 <script src="ai.js"></script>
 <script src="app.js"></script>
 <script src="lightning.js"></script>
+<script src="pdfout.js"></script>
 <script src="books.js"></script>
 </body>
 </html>
