@@ -29,7 +29,6 @@ function renderPrefs(){
   b.dataset.tip = para ? '문단 · blocks' : '문장 · block';
   b.dataset.tipD = para ? '번개 한 번에 한 문단이 나옵니다. 누르면 한두 문장(block)으로' : '번개 한 번에 한두 문장이 나옵니다. 누르면 한 문단(blocks)으로';
   b.setAttribute('aria-label', para ? '문단(blocks): 한 문단. 누르면 문장으로' : '문장(block): 한두 문장. 누르면 문단으로');
-  $('#lenTag').textContent = para ? '문단' : '문장';
   $('#lenIcS').toggleAttribute('hidden', para); $('#lenIcP').toggleAttribute('hidden', !para);
   document.querySelectorAll('[data-tier]').forEach(x => { const on = x.dataset.tier === prefs.tier; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
   $('#aiEnter2').checked = !!prefs.enter2;
