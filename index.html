@@ -211,6 +211,8 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #tip span{display:block;opacity:.85;margin-top:1px}
 #stormBtn:not(.has){opacity:.7}
 #fragBtn{position:relative}
+#kindPop .mi[aria-checked="true"]{background:var(--hover);font-weight:600}
+#kindPop .mi[aria-checked="true"]::before{content:"✓ ";color:var(--accent)}
 #lenBtn svg path{stroke-width:1.8}
 .badge{position:absolute;top:1px;right:0;min-width:15px;height:15px;border-radius:8px;padding:0 3px;background:var(--accent);color:var(--accent-ink);font-size:10px;line-height:15px;text-align:center;font-variant-numeric:tabular-nums}
 .badge:empty{display:none}
@@ -485,6 +487,7 @@ button.danger:disabled{opacity:.4}
         <button id="openBtn" class="icon" data-pop="openPop" aria-haspopup="true" aria-expanded="false" title="불러오기" aria-label="불러오기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
         <button id="exportBtn" class="icon" data-pop="exportMenu" aria-haspopup="true" aria-expanded="false" title="저장·내보내기" aria-label="저장·내보내기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg></button>
         <span class="sep"></span>
+        <button id="kindBtn" class="icon" data-pop="kindPop" aria-haspopup="true" aria-expanded="false" data-tip="kind" data-tip-d="이 원고의 글 종류. 번개와 build가 그 종류에 맞게 씁니다" aria-label="글 종류"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/></svg></button>
         <button id="lenBtn" class="icon" data-tip="block" data-tip-d="번개 한 번에 한두 문장이 나옵니다. 누르면 한 문단(blocks)으로" aria-label="block: 한두 문장. 누르면 blocks로"><svg id="lenIcS" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16M4 14h9"/></svg><svg id="lenIcP" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M4 6h16M4 10h16M4 14h16M4 18h9"/></svg></button>
         <button id="tidyBtn" class="icon" data-tip="build" data-tip-d="쓴 데까지 맞춤법·띄어쓰기·군더더기를 정리합니다. 바뀐 곳을 보고 받을 것만 고릅니다" aria-label="build: 쓴 데까지 정리"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13.5 4.5 6 6-2.5 2.5-6-6z"/><path d="M12.2 8.2 4.4 16a1.6 1.6 0 0 0 2.3 2.3l7.8-7.8"/></svg></button>
         <button id="fragBtn" class="icon" data-tip="bricks" data-tip-d="떠오른 소재를 모아 두는 조각함. 번개와 build가 꼭 맞는 자리에만 씁니다" aria-label="bricks: 조각함"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M9 14.3V19"/></svg><span id="fragN" class="badge"></span></button>
@@ -516,6 +519,14 @@ button.danger:disabled{opacity:.4}
     <div class="pop-row sel-note" id="fsNote">글을 끌어서 고른 뒤 이 메뉴를 열면 고른 부분만 바뀝니다</div>
     <label class="pop-row">줄간격 <span class="lh-wrap"><input id="lh" type="range" min="1.3" max="3" step="0.05" value="1.9"> <span id="lhVal">1.9</span></span></label>
     <label class="pop-row">첫 줄 들여쓰기 <input id="indent" type="checkbox" checked></label>
+  </div>
+  <div id="kindPop" class="pop menu" role="menu" hidden>
+    <div class="mh">글 종류<small>번개와 build가 이 종류에 맞게 씁니다</small></div>
+    <button class="mi" role="menuitemradio" data-kind="novel">소설<small>문장·문단 이어 쓰기, 문체 따라가기</small></button>
+    <button class="mi" role="menuitemradio" data-kind="script">시나리오<small>씬 제목·지문·대사를 줄 단위로</small></button>
+    <button class="mi" role="menuitemradio" data-kind="outline">개요·메모<small>번호·글머리를 따라 항목을 이어서</small></button>
+    <button class="mi" role="menuitemradio" data-kind="mail">메일·편지<small>어조를 지키고 사실은 지어내지 않음</small></button>
+    <button class="mi" role="menuitemradio" data-kind="essay">산문·칼럼<small>논지와 문체를 이어서</small></button>
   </div>
   <div id="openPop" class="pop menu" role="menu" hidden>
     <div class="mh">편집 모드<small>원고로 불러와 고칩니다</small></div>

@@ -29,11 +29,32 @@ document.addEventListener('wongo:ailast', e => {
 });
 const prefs = Object.assign({len: 'short', tier: 'mid', enter2: true, smartq: true}, lsGet('prefs', {}));
 const savePrefs = () => lsSet('prefs', prefs);
+/* ================= 글 종류 (원고마다 lt.kind) =================
+   번개·build·스토밍이 글 종류에 맞게 쓴다. 정하지 않은 원고는 소설.
+   line: 줄 단위 글(시나리오·개요). 번개가 새 줄에서 시작해 여러 줄을 줄마다 한 문단으로 넣는다. */
+const KIND = {
+  novel:   {name: '소설',      head: '소설가가 초고를 쓰고 있다.', thing: '초고', line: false, unitS: '새 문장 한두 개', unitP: '한 문단(새 문장 3~5개)', tipS: '한두 문장', tipP: '한 문단'},
+  script:  {name: '시나리오',  head: '시나리오 작가가 초고를 쓰고 있다.', thing: '초고', line: true, unitS: '새 줄 두세 줄(지문이나 대사)', unitP: '한 대목(새 줄 6~10줄)', tipS: '두세 줄', tipP: '한 대목'},
+  outline: {name: '개요·메모', head: '작가가 글이나 이야기의 개요·메모를 쓰고 있다.', thing: '개요 초안', line: true, unitS: '새 항목 한두 개', unitP: '새 항목 네댓 개', tipS: '항목 한두 개', tipP: '항목 네댓 개'},
+  mail:    {name: '메일·편지', head: '작성자가 메일(또는 편지)을 쓰고 있다.', thing: '메일 초안', line: false, unitS: '새 문장 한두 개', unitP: '한 문단(새 문장 3~5개)', tipS: '한두 문장', tipP: '한 문단'},
+  essay:   {name: '산문·칼럼', head: '필자가 산문(칼럼)을 쓰고 있다.', thing: '초고', line: false, unitS: '새 문장 한두 개', unitP: '한 문단(새 문장 3~5개)', tipS: '한두 문장', tipP: '한 문단'}
+};
+const kindId = () => lt && KIND[lt.kind] ? lt.kind : 'novel';
+const kindDef = () => KIND[kindId()];
+const josa = (w, a, b) => { const ch = String(w).replace(/[^가-힣]+$/, '').slice(-1); const c = ch ? ch.charCodeAt(0) - 0xAC00 : -1; return c >= 0 && c <= 11171 && c % 28 ? a : b; };
+const stWho = () => kindId() === 'script' ? '시나리오 작가' : kindId() === 'novel' ? '소설가' : '작가';
+const stNoun = () => kindId() === 'script' ? '시나리오' : kindId() === 'novel' ? '소설' : '이야기';
+function renderKind(){
+  const k = kindId(), D = KIND[k], kb = $('#kindBtn');
+  document.querySelectorAll('#kindPop [data-kind]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.kind === k)));
+  if(kb){ kb.dataset.tip = 'kind · ' + D.name; kb.setAttribute('aria-label', '글 종류: ' + D.name); }
+  renderPrefs();
+}
 function renderPrefs(){
-  const para = prefs.len === 'para', b = $('#lenBtn');
+  const para = prefs.len === 'para', b = $('#lenBtn'), D = KIND[typeof lt === 'undefined' ? 'novel' : kindId()];
   b.dataset.tip = para ? 'blocks' : 'block';
-  b.dataset.tipD = para ? '번개 한 번에 한 문단이 나옵니다. 누르면 한두 문장(block)으로' : '번개 한 번에 한두 문장이 나옵니다. 누르면 한 문단(blocks)으로';
-  b.setAttribute('aria-label', para ? 'blocks: 한 문단. 누르면 block으로' : 'block: 한두 문장. 누르면 blocks로');
+  b.dataset.tipD = para ? '번개 한 번에 ' + D.tipP + '이 나옵니다. 누르면 ' + D.tipS + '(block)으로' : '번개 한 번에 ' + D.tipS + '이 나옵니다. 누르면 ' + D.tipP + '(blocks)으로';
+  b.setAttribute('aria-label', para ? 'blocks: ' + D.tipP + '. 누르면 block으로' : 'block: ' + D.tipS + '. 누르면 blocks로');
   $('#lenIcS').toggleAttribute('hidden', para); $('#lenIcP').toggleAttribute('hidden', !para);
   document.querySelectorAll('[data-tier]').forEach(x => { const on = x.dataset.tier === prefs.tier; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
   $('#aiEnter2').checked = !!prefs.enter2;
@@ -48,11 +69,11 @@ $('#aiSmartQ').onchange = () => { prefs.smartq = $('#aiSmartQ').checked; savePre
 const normLt = x => Object.assign({}, x || {}, {frags: x && Array.isArray(x.frags) ? x.frags.slice() : [], mark: (x && x.mark) || null});
 let lt = normLt(null), ltId = null, ltT = null;
 async function loadLt(){
-  const c = W.cur(); if(!c){ lt = normLt(null); ltId = null; return; }
+  const c = W.cur(); if(!c){ lt = normLt(null); ltId = null; renderKind(); return; }
   const r = await W.DB.get(c.id);
   if(!W.cur() || W.cur().id !== c.id) return;
   lt = normLt(r && r.lt); ltId = c.id; stFill(lt.storm);
-  renderFragCount(); renderBand();
+  renderKind(); renderFragCount(); renderBand();
   if(!$('#stormDlg').hidden) renderStorm();
   if(!$('#fragDlg').hidden) renderFrags();
 }
@@ -151,8 +172,9 @@ const chapRe = W.chapRe, sceneRe = W.sceneRe, numRe = W.numRe;
 const blocks = () => [...paper.children];
 const textOf = el => (el.innerText || el.textContent || '').replace(/ /g, ' ').replace(/[ \t]*\n[ \t]*/g, ' ').replace(/\s+$/, '');
 const isEmpty = el => !norm(textOf(el));
-const isChap = el => el.classList.contains('chap') || chapRe.test(norm(textOf(el)));
-const isSep = el => { const t = norm(textOf(el)); return isChap(el) || sceneRe.test(t) || numRe.test(t); };
+/* 개요는 '1. 도입'처럼 번호 붙은 짧은 줄이 항목이다. 장 제목·장면 구분으로 읽지 않는다 */
+const isChap = el => el.classList.contains('chap') || (kindId() !== 'outline' && chapRe.test(norm(textOf(el))));
+const isSep = el => { const t = norm(textOf(el)); return isChap(el) || (kindId() !== 'outline' && (sceneRe.test(t) || numRe.test(t))); };
 function blockOf(node){
   if(!node || !paper.contains(node) || node === paper) return null;
   while(node && node.parentNode !== paper) node = node.parentNode;
@@ -239,27 +261,48 @@ function contextAt(b, r){
   };
 }
 function boltPrompt(c, frags, rej, len){
+  const k = kindId(), D = KIND[k], para = len === 'para', unit = para ? D.unitP : D.unitS, line = D.line;
   const L = [];
-  L.push('소설가가 초고를 쓰고 있다. [원고] 끝의 ▶ 자리에 바로 이어질 ' + (len === 'para' ? '한 문단(새 문장 3~5개)' : '새 문장 한두 개') + '를 써 줘.', '');
-  L.push('- 반드시 ▶ 뒤에 올 새 문장을 쓴다. 마침표나 몇 글자만 붙이고 끝내지 않는다. [원고]에 이미 있는 문장을 다시 쓰지 않는다.');
-  L.push('- 작가의 문체를 그대로 따른다: 어휘, 어미, 시제, 시점, 문장 길이와 호흡, 대사 따옴표 방식. 원고에 따옴표가 아직 없으면 굽은 큰따옴표(“ ”)로 쓴다.');
-  L.push('- 바로 다음 순간을 쓴다. 장면을 건너뛰거나 이야기를 서둘러 매듭짓거나 교훈으로 정리하지 않는다.');
-  if(c.mid) L.push('- ▶ 앞 문장이 아직 끝나지 않았다. 그 문장을 자연스럽게 마저 잇고, 이어서 새 문장을 ' + (len === 'para' ? '3~5개' : '한두 개') + ' 더 쓴다.');
+  L.push(D.head + ' [원고] 끝의 ▶ 자리에 바로 이어질 ' + unit + josa(unit, '을', '를') + ' 써 줘.', '');
+  if(line) L.push('- 반드시 ▶ 뒤에 올 새 줄을 쓴다. [원고]에 이미 있는 줄을 다시 쓰지 않는다. 줄마다 줄바꿈으로 나눈다.');
+  else L.push('- 반드시 ▶ 뒤에 올 새 문장을 쓴다. 마침표나 몇 글자만 붙이고 끝내지 않는다. [원고]에 이미 있는 문장을 다시 쓰지 않는다.');
+  if(k === 'novel'){
+    L.push('- 작가의 문체를 그대로 따른다: 어휘, 어미, 시제, 시점, 문장 길이와 호흡, 대사 따옴표 방식. 원고에 따옴표가 아직 없으면 굽은 큰따옴표(“ ”)로 쓴다.');
+    L.push('- 바로 다음 순간을 쓴다. 장면을 건너뛰거나 이야기를 서둘러 매듭짓거나 교훈으로 정리하지 않는다.');
+  } else if(k === 'script'){
+    L.push('- 작가의 형식을 그대로 따른다: 씬 제목(S#, 장소, 시간대) 표기, 지문과 대사의 구분, 인물 이름과 대사 줄 모양, 말투. 원고에 쓰인 형식이 없으면 흔한 한국 시나리오 형식(씬 제목 / 지문 / 인물 이름과 대사)으로 쓴다.');
+    L.push('- 한 줄이 지문 하나이거나 대사 하나다. 지문에는 눈에 보이고 귀에 들리는 것만 쓰고, 인물의 속마음을 설명하지 않는다.');
+    L.push('- 바로 다음 순간을 쓴다. 장면을 서둘러 매듭짓거나 결말로 몰지 않는다. 대사 따옴표는 원고 방식을 따른다.');
+  } else if(k === 'outline'){
+    L.push('- 작가의 형식을 그대로 따른다: 번호 매기기(1. / 1) / 가. 등), 글머리 기호, 들여쓰기, 항목의 길이와 말투(명사형, 짧은 문장 등). 번호가 있으면 이어서 매긴다.');
+    L.push('- 개요는 뼈대다. 줄글로 풀어 쓰지 않고, 서론·결론·요약으로 닫지 않는다. 이미 있는 항목과 겹치지 않는 다음 항목을 쓴다.');
+  } else if(k === 'mail'){
+    L.push('- 어조(존댓말·격식), 호칭, 어미, 문장 길이를 그대로 따른다.');
+    L.push('- 날짜, 금액, 이름, 일정, 첨부, 약속 같은 사실은 [원고]에 있는 것만 쓰고 지어내지 않는다. 모르는 사실이 필요한 자리는 건너뛰고 쓸 수 있는 내용만 쓴다. 서명과 맺음 인사는 작가가 아직 쓰지 않았으면 쓰지 않는다.');
+  } else {
+    L.push('- 작가의 문체를 그대로 따른다: 어휘, 어미, 시제, 인칭, 문장 길이와 호흡.');
+    L.push('- 논지를 이어 간다. 이미 한 말을 되풀이하거나 서둘러 결론을 내리지 않는다. 근거로 삼는 사실, 수치, 인용은 [원고]에 있는 것만 쓰고 지어내지 않는다.');
+  }
+  if(c.mid && !line) L.push('- ▶ 앞 문장이 아직 끝나지 않았다. 그 문장을 자연스럽게 마저 잇고, 이어서 새 문장을 ' + (para ? '3~5개' : '한두 개') + ' 더 쓴다.');
   else if(!c.newPara) L.push('- ▶ 앞 문장은 끝났다(마침표가 빠졌을 수 있다). 그 문장에는 손대지 말고 다음 문장부터 쓴다.');
-  if(c.newPara) L.push('- ▶는 새 문단의 첫머리다.');
+  if(c.newPara) L.push(line ? '- ▶는 새 줄의 첫머리다. 앞 줄에는 손대지 않는다.' : '- ▶는 새 문단의 첫머리다.');
   if(c.after) L.push('- ▶ 뒤에 [뒤 문맥]이 이미 있다. 거기로 자연스럽게 닿게 쓰고, 뒤 문맥의 내용을 미리 써 버리지 않는다.');
   if(frags.length) L.push('- [조각]은 작가가 모아 둔 소재다. 이 자리에 꼭 맞을 때만 살짝 쓴다.');
   if(rej.length) L.push('- [버린 방향]은 작가가 이 자리에서 지운 제안이다. 그 내용, 사건, 방향과 겹치지 않는 다른 길로 쓴다.');
-  L.push('- 답에는 이어질 본문만 쓴다. 설명, 제목, 머리말, 따옴표로 감싸기, ▶ 표시, 마크다운을 쓰지 않는다.');
+  L.push(line ? '- 답에는 이어질 줄만 쓴다. 설명, 제목, 머리말, 따옴표로 감싸기, ▶ 표시, 마크다운 서식(굵게, 제목 기호)은 쓰지 않는다. 글머리 기호나 번호는 [원고]에서 쓰는 모양 그대로만 쓴다.' : '- 답에는 이어질 본문만 쓴다. 설명, 제목, 머리말, 따옴표로 감싸기, ▶ 표시, 마크다운을 쓰지 않는다.');
   L.push(...fragLines(frags));
   L.push(...stormForBolt());
   if(rej.length){ L.push('', '[버린 방향]'); rej.forEach(t => L.push('- ' + clip(t, 300))); }
   if(c.chap) L.push('', '[지금 장] ' + c.chap);
-  L.push('', '[원고]', c.before + '▶');
+  L.push('', '[원고]', c.before + (line && c.before ? '\n' : '') + '▶');
   if(c.after) L.push('', '[뒤 문맥]', c.after);
   return L.join('\n');
 }
-const cleanGen = t => String(t || '').replace(/```[a-zA-Z]*\n?/g, '').replace(/▶/g, '').replace(/\s*\n+\s*/g, ' ').replace(/^\s+/, '');
+const cleanGen = (t, lines) => {
+  const x = String(t || '').replace(/```[a-zA-Z]*\n?/g, '').replace(/▶/g, '');
+  if(!lines) return x.replace(/\s*\n+\s*/g, ' ').replace(/^\s+/, '');
+  return x.replace(/\r/g, '').split('\n').map(l => l.replace(/\s+$/, '')).join('\n').replace(/^\s+/, '').replace(/\n{2,}/g, '\n');
+};
 /* AI가 곧은 따옴표(")로 쓴 대사를, 원고가 쓰는 따옴표 모양에 맞춘다. 원고에 아직 따옴표가 없으면 한글 프로그램처럼 굽은 따옴표(“ ”)로 */
 function quoteStyle(before){
   const n = re => (before.match(re) || []).length;
@@ -316,19 +359,33 @@ async function bolt(){
   let b = blockOf(r.endContainer === paper ? paper.childNodes[Math.max(0, r.endOffset - 1)] : r.endContainer);
   if(!b){ b = paper.lastElementChild; r = document.createRange(); r.selectNodeContents(b); r.collapse(false); }
   if(r.endContainer === paper){ r = document.createRange(); r.selectNodeContents(b); r.collapse(false); }
+  const LINE = kindDef().line;
+  if(LINE){ r = document.createRange(); r.selectNodeContents(b); r.collapse(false); }   // 줄 단위 글은 늘 줄 끝에서 새 줄로 잇는다
   const c = contextAt(b, r);
+  if(LINE){ c.mid = false; c.newPara = true; }
   const key = keyOf(c.before);
   const prompt = boltPrompt(c, pickFrags(lt), rejected.get(key) || [], prefs.len);
 
   const span = document.createElement('span'); span.className = 'lt-new lt-live wait';
   const tail = document.createTextNode(' ');
-  if(isEmpty(b)){ b.textContent = ''; b.append(span, tail); }
+  const spans = [span], blks = [];
+  if(isEmpty(b)){ b.textContent = ''; if(LINE) b.append(span); else b.append(span, tail); }
+  else if(LINE){ const nb = document.createElement('div'); nb.appendChild(span); b.after(nb); blks.push(nb); }
   else { r.insertNode(tail); r.insertNode(span); }
   keepVisible(span);
   const prevChar = c.head.slice(-1);
   let lead = null;
   const put = t => {
-    const s = fitQuotes(cleanGen(t), c.before); if(!s) return;
+    const s = fitQuotes(cleanGen(t, LINE), c.before); if(!s) return;
+    if(LINE){
+      const lines = s.replace(/\n+$/, '').split('\n');
+      while(spans.length < lines.length){
+        const d = document.createElement('div'), sp = document.createElement('span'); sp.className = 'lt-new lt-live';
+        d.appendChild(sp); spans[spans.length - 1].parentNode.after(d); blks.push(d); spans.push(sp);
+      }
+      lines.forEach((ln, i) => { spans[i].textContent = ln; });
+      span.classList.remove('wait'); return;
+    }
     if(lead === null) lead = prevChar && !/\s/.test(prevChar) && !/^[.,!?…·:;)\]}'"”’」』〉》~]/.test(s) ? ' ' : '';
     span.classList.remove('wait'); span.textContent = lead + s;
   };
@@ -347,12 +404,19 @@ async function bolt(){
   }finally{
     gen = null; showLive(false);
     span.classList.remove('lt-live', 'wait');
-    if(!norm(span.textContent)){
-      const back = document.createRange(); back.setStartBefore(span); back.collapse(true);
-      span.remove(); tail.remove(); setCaret(back);
+    spans.forEach(x => x.classList.remove('lt-live', 'wait'));
+    if(!norm(spans.map(x => x.textContent).join(''))){
+      const back = document.createRange();
+      if(LINE){ blks.forEach(x => x.remove()); span.remove(); back.selectNodeContents(b); back.collapse(false); }
+      else { back.setStartBefore(span); back.collapse(true); span.remove(); tail.remove(); }
+      setCaret(back);
     } else {
-      lastSug = {span, tail, text: norm(span.textContent), key};
-      const at = document.createRange(); at.setStart(tail, tail.length); at.collapse(true); setCaret(at);
+      const text = LINE ? spans.map(x => norm(x.textContent)).join('\n') : norm(span.textContent);
+      lastSug = {span, spans, blks, home: b, line: LINE, tail, text, key};
+      const at = document.createRange();
+      if(LINE){ const lastD = spans[spans.length - 1].parentNode; at.selectNodeContents(lastD); at.collapse(false); }
+      else { at.setStart(tail, tail.length); at.collapse(true); }
+      setCaret(at);
       showSug(); W.onEdit();
     }
   }
@@ -361,11 +425,17 @@ function showSug(){ $('#sug').hidden = false; }
 function hideSug(){ $('#sug').hidden = true; }
 function dropSug(reject){
   if(!lastSug) return;
-  const {span, tail, text, key} = lastSug;
+  const {span, spans, blks, home, line, tail, text, key} = lastSug;
   if(reject) addRej(key, text);
   if(span.isConnected){
-    const r = document.createRange(); r.setStartBefore(span); r.collapse(true);
-    span.remove(); if(tail.isConnected && /^ ?$/.test(tail.data)) tail.remove();
+    const r = document.createRange();
+    if(line){
+      (spans || [span]).forEach(x => x.remove()); (blks || []).forEach(x => x.remove());
+      if(home && home.isConnected){ r.selectNodeContents(home); r.collapse(false); } else r.setStart(paper, 0), r.collapse(true);
+    } else {
+      r.setStartBefore(span); r.collapse(true);
+      span.remove(); if(tail.isConnected && /^ ?$/.test(tail.data)) tail.remove();
+    }
     setCaret(r);
   }
   lastSug = null; hideSug(); W.onEdit();
@@ -373,7 +443,9 @@ function dropSug(reject){
 $('#sugAgain').onclick = () => { dropSug(true); bolt(); };
 $('#sugDrop').onclick = () => dropSug(true);
 $('#sugKeep').onclick = () => {
-  if(lastSug && lastSug.span.isConnected){ const t = document.createTextNode(lastSug.span.textContent); lastSug.span.replaceWith(t); t.parentNode && t.parentNode.normalize(); }
+  if(lastSug && lastSug.span.isConnected){
+    for(const sp of lastSug.spans || [lastSug.span]){ if(!sp.isConnected) continue; const t = document.createTextNode(sp.textContent); sp.replaceWith(t); t.parentNode && t.parentNode.normalize(); }
+  }
   lastSug = null; hideSug(); W.onEdit();
 };
 document.addEventListener('pointerdown', e => { if(!$('#sug').hidden && !e.target.closest('#sug') && !e.target.closest('#boltBtn')) hideSug(); }, true);
@@ -521,7 +593,7 @@ function computeRange(endB, selR, x){
     const b = bs[i]; if(isEmpty(b)) continue;
     const raw = textOf(b), lead = (raw.match(/^\s+/) || [''])[0], text = raw.trim();
     if(isSep(b)){ paras.push({i, text, lead, sep: true, sents: []}); continue; }
-    const sents = splitSents(text).map(t => ({n: ++n, t}));
+    const sents = (kindId() === 'outline' ? [text] : splitSents(text)).map(t => ({n: ++n, t}));   // 개요는 한 줄이 한 항목('1.' 앞에서 끊지 않는다)
     chars += text.length;
     paras.push({i, text, lead, sents});
   }
@@ -531,12 +603,13 @@ function computeRange(endB, selR, x){
 function tidyPrompt(se, frags){
   const needKw = frags.some(f => !f.k || !f.k.length);
   const L = [];
-  L.push('소설가가 생각과 문장을 뒤섞어 빠르게 쓴 초고를 정리해 줘. 가장 중요한 것은 작가의 문체를 지키는 것이다.', '');
+  const kd = kindDef(), kk = kindId();
+  L.push((kk === 'novel' ? '소설가' : kk === 'script' ? '시나리오 작가' : kk === 'mail' ? '작성자' : kk === 'essay' ? '필자' : '작가') + '가 생각과 문장을 뒤섞어 빠르게 쓴 ' + kd.thing + '을 정리해 줘. 가장 중요한 것은 작가의 ' + (kk === 'outline' || kk === 'script' ? '형식과 문체' : '문체') + '를 지키는 것이다.', '');
   L.push('1. [원문]의 번호 붙은 문장을 하나씩 판단한다.');
   L.push('- 그대로 둘 문장 → [번호] =');
-  L.push('- 고칠 문장 → [번호] 고친 문장. 오탈자, 맞춤법, 띄어쓰기, 어색한 연결만 고친다. 어휘, 어미, 시제, 시점, 문장 길이, 대사 따옴표 방식은 작가의 것을 따르고 내용은 바꾸지 않는다.');
+  L.push('- 고칠 문장 → [번호] 고친 문장. 오탈자, 맞춤법, 띄어쓰기, 어색한 연결만 고친다. 어휘, 어미, 시제, 시점, 문장 길이, 대사 따옴표 방식은 작가의 것을 따르고 내용은 바꾸지 않는다.' + (kk === 'mail' || kk === 'essay' ? ' 날짜, 금액, 이름, 수치, 존댓말·격식도 바꾸지 않는다.' : kk === 'outline' || kk === 'script' ? ' 번호, 글머리 기호, 들여쓰기, 씬 제목·지문·대사의 형식도 바꾸지 않는다.' : ''));
   L.push('- 겹치거나 군더더기인 문장 → [번호] 삭제');
-  L.push('- 소설 문장이 아니라 작가가 스스로에게 남긴 생각이나 메모 → [번호] 메모 | 핵심어, 핵심어');
+  if(kk !== 'outline') L.push('- ' + (kk === 'novel' ? '소설 문장' : '본문') + '이 아니라 작가가 스스로에게 남긴 생각이나 메모 → [번호] 메모 | 핵심어, 핵심어');
   if(frags.length) L.push('- [조각]의 소재가 그 자리에 꼭 맞을 때만 새 문장을 넣는다 → [번호+] {조각번호} 새 문장. 그 번호 문장 바로 뒤에 들어간다. 전체에서 많아야 두 개.');
   if(needKw) L.push('2. [조각] 가운데 "핵심어 없음"인 것마다 핵심어를 2~4개 붙인다.');
   L.push('', '답은 아래 형식만 쓴다. 설명, 인사, 마크다운, 코드 블록은 쓰지 않는다. [정리]에는 원문의 모든 번호를 차례대로 적는다.');
@@ -551,7 +624,7 @@ function tidyPrompt(se, frags){
 }
 const HOW = {sel: '고른 부분', mark: '지난번 정리한 다음부터 여기까지', chap: '이 장 처음부터 여기까지', cap: '여기까지 4,000자 안쪽 (앞쪽은 길어서 뺐습니다)', start: '원고 처음부터 여기까지', auto: '여기까지'};
 const KINDS = {edit: '손질', del: '삭제', memo: '조각으로', mat: '소재 넣기'};
-const KIND_HELP = {edit: '맞춤법·띄어쓰기·어색한 연결 손질', del: '겹치거나 군더더기라 빼자는 문장', memo: '소설 문장이 아닌 메모라서 조각함으로 옮길 것', mat: '조각의 소재를 살려 새로 넣자는 문장'};
+const KIND_HELP = {edit: '맞춤법·띄어쓰기·어색한 연결 손질', del: '겹치거나 군더더기라 빼자는 문장', memo: '본문이 아닌 메모라서 조각함으로 옮길 것', mat: '조각의 소재를 살려 새로 넣자는 문장'};
 let tidy = null;
 const tidyBusy = () => !!(tidy && tidy.ctl);
 function renderRange(){
@@ -871,7 +944,7 @@ function materialLines(s){
 }
 function stormPrompt(s, mode, ask){
   const L = [];
-  L.push(mode === 'ask' ? '소설가가 세운 개요를 작가의 지시대로 고쳐 줘.' : '소설가의 브레인스토밍을 읽고 8페이지즈 구조로 소설 개요를 짜 줘.');
+  L.push(mode === 'ask' ? stWho() + '가 세운 개요를 작가의 지시대로 고쳐 줘.' : stWho() + '의 브레인스토밍을 읽고 8페이지즈 구조로 ' + stNoun() + ' 개요를 짜 줘.');
   L.push(...phaseLines(s));
   L.push('', '쓰는 법');
   L.push('- 작가가 적은 인물, 장면, 이미지, 문장, 질문을 최대한 살린다. 작가가 정하지 않은 것은 이야기에 필요한 만큼만 채우고, 작가가 쓴 것과 어긋나게 바꾸지 않는다.');
@@ -895,7 +968,7 @@ function stormPrompt(s, mode, ask){
   return L.join('\n');
 }
 function donePrompt(s){
-  const L = ['소설 개요를 바탕으로 인물표와 연표를 정리해 줘.', ''];
+  const L = [stNoun() + ' 개요를 바탕으로 인물표와 연표를 정리해 줘.', ''];
   L.push('- cast(인물표): 개요와 브레인스토밍에 나오는 주요 인물과 꼭 필요한 주변 인물. 항목은 name, role(이야기 속 자리), age(나이·신분), desc(외모와 성격 한두 문장), want(바라는 것), lack(결핍이나 비밀), arc(이야기 처음과 끝의 변화를 "처음 → 끝" 꼴로), rel(다른 인물과의 관계).');
   L.push('- time(연표): 이야기 속 사건을 실제로 일어난 시간 순서대로 적는다(서술 순서가 아님). 이야기가 시작되기 전의 일도 필요한 만큼 넣는다. 항목은 when(때: 정해져 있으면 구체적으로, 아니면 "이야기 3년 전", "첫날 밤"처럼), what(일어난 일 한 문장), who(관련 인물 이름, 쉼표로), ph(이야기 전 일이면 "pre", 아니면 그 일이 나오는 단계 키).');
   L.push('- 개요, 브레인스토밍, 원고에 있는 것을 바탕으로 하고, 없는 사실은 이야기에 꼭 필요한 만큼만 채운다.');
@@ -908,7 +981,7 @@ function donePrompt(s){
   return L.join('\n');
 }
 function reflectPrompt(s, before, after){
-  const L = ['작가가 소설의 인물표와 연표를 고쳤다. 고친 내용이 개요에 들어가도록 개요를 고쳐 줘.', ''];
+  const L = ['작가가 ' + stNoun() + '의 인물표와 연표를 고쳤다. 고친 내용이 개요에 들어가도록 개요를 고쳐 줘.', ''];
   L.push('- [고치기 전]과 [고친 뒤]를 견주어 바뀐 것만 반영한다. 바뀐 것과 상관없는 칸은 글자 하나 바꾸지 말고 그대로 적는다.');
   L.push('- [고정] 칸은 작가가 정한 것이다. 이름이나 사실이 어긋나는 부분만 맞추고 나머지는 그대로 둔다.');
   L.push('- people은 [고친 뒤]의 인물표를 따른다.');
@@ -1414,9 +1487,16 @@ $('#aiForget').onclick = () => { AI.setKey(''); AI.setModel(''); AI.setModels([]
 $('#aiShow').onclick = () => { const i = $('#aiKey'); i.type = i.type === 'password' ? 'text' : 'password'; $('#aiShow').textContent = i.type === 'password' ? '보기' : '가리기'; };
 $('#setBtn').onclick = () => { if(narrow()) app.classList.remove('drawer'); openAi(); };
 
+/* ================= 글 종류 고르기 ================= */
+document.querySelectorAll('#kindPop [data-kind]').forEach(b => { b.onclick = () => {
+  const k = b.dataset.kind; if(!KIND[k] || !ltId) return;
+  if(kindId() !== k){ lt.kind = k; markLt(); }
+  renderKind(); toast('글 종류 · ' + KIND[k].name + (KIND[k].line ? ' (번개가 새 줄에서 줄 단위로 씁니다)' : ''), 2600);
+}; });
+
 /* ================= 시작 ================= */
 try{ document.execCommand('defaultParagraphSeparator', false, 'div'); }catch(e){}
-renderPrefs();
+renderKind();
 loadLt();
-window.__lightning = {typoAt, fitQuotes, quoteStyle, splitSents, parseResp, cdiff, computeRange, stNorm, ctMerge, pickFrags, boltPrompt, tidyPrompt, stormPrompt, prefs};
+window.__lightning = {typoAt, fitQuotes, quoteStyle, splitSents, parseResp, cdiff, computeRange, stNorm, ctMerge, pickFrags, boltPrompt, tidyPrompt, stormPrompt, prefs, kindId, KIND, setKindForTest: k => { lt.kind = k; renderKind(); }};
 })();
