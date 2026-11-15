@@ -794,17 +794,23 @@ const Drive = (() => {
   if(saved && saved.exp > Date.now()){ token = saved.token; exp = saved.exp; }
   const tokenOk = () => !!token && exp > Date.now();
 
+  let gisP = null;
   function loadGis(){
     if(window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
-    return new Promise((ok, bad) => {
+    if(gisP) return gisP;
+    gisP = new Promise((ok, bad) => {
       const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
-      s.onload = () => ok(); s.onerror = () => { s.remove(); bad({code: 'network'}); };
+      s.onload = () => ok(); s.onerror = () => { s.remove(); gisP = null; bad({code: 'network'}); };
       document.head.appendChild(s);
     });
+    return gisP;
   }
+  /* 로그인 부품(구글 gsi)을 앱을 연 직후 미리 받아 둔다. 처음 누를 때 받느라 늦어져 로그인 창이 실패하던 것을 막는다 */
+  if(CID) setTimeout(() => { if(navigator.onLine !== false) loadGis().catch(() => {}); }, 1200);
   async function requestToken(scope){
     scope = scope || SCOPE;
-    await loadGis();
+    /* 이미 받아 둔 상태면 기다리지 않고 바로 로그인 창을 연다(누른 직후여야 팝업이 막히지 않고 설치 앱에서도 열린다) */
+    if(!(window.google && google.accounts && google.accounts.oauth2)) await loadGis();
     return new Promise((ok, bad) => {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: CID, scope, prompt: '',
