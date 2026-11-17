@@ -226,7 +226,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #tip{position:fixed;z-index:80;max-width:260px;background:var(--ink);color:var(--paper);border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.22);pointer-events:none}
 #tip b{display:block;font-weight:600}
 #tip span{display:block;opacity:.85;margin-top:1px}
-#stormBtn:not(.has){opacity:.7}
+#stormBtn.has{color:var(--accent)}   /* 개요가 있으면 포인트 색 */
 #fragBtn{position:relative}
 #lenBtn svg path{stroke-width:1.8}
 .badge{position:absolute;top:1px;right:0;min-width:15px;height:15px;border-radius:8px;padding:0 3px;background:var(--accent);color:var(--accent-ink);font-size:10px;line-height:15px;text-align:center;font-variant-numeric:tabular-nums}
