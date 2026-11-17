@@ -45,9 +45,6 @@ const josa = (w, a, b) => { const ch = String(w).replace(/[^가-힣]+$/, '').sli
 const stWho = () => kindId() === 'script' ? '시나리오 작가' : kindId() === 'novel' ? '소설가' : '작가';
 const stNoun = () => kindId() === 'script' ? '시나리오' : kindId() === 'novel' ? '소설' : '이야기';
 function renderKind(){
-  const k = kindId(), D = KIND[k], kb = $('#kindBtn');
-  document.querySelectorAll('#kindPop [data-kind]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.kind === k)));
-  if(kb){ kb.dataset.tip = 'kind · ' + D.name; kb.setAttribute('aria-label', '글 종류: ' + D.name); }
   renderPrefs();
 }
 function renderPrefs(){
@@ -1486,13 +1483,6 @@ $('#aiModel').onchange = () => { AI.setModel($('#aiModel').value); renderAi(); a
 $('#aiForget').onclick = () => { AI.setKey(''); AI.setModel(''); AI.setModels([]); renderAi(); aiMsg('이 기기에서 키를 지웠습니다.'); };
 $('#aiShow').onclick = () => { const i = $('#aiKey'); i.type = i.type === 'password' ? 'text' : 'password'; $('#aiShow').textContent = i.type === 'password' ? '보기' : '가리기'; };
 $('#setBtn').onclick = () => { if(narrow()) app.classList.remove('drawer'); openAi(); };
-
-/* ================= 글 종류 고르기 ================= */
-document.querySelectorAll('#kindPop [data-kind]').forEach(b => { b.onclick = () => {
-  const k = b.dataset.kind; if(!KIND[k] || !ltId) return;
-  if(kindId() !== k){ lt.kind = k; markLt(); }
-  renderKind(); toast('글 종류 · ' + KIND[k].name + (KIND[k].line ? ' (번개가 새 줄에서 줄 단위로 씁니다)' : ''), 2600);
-}; });
 
 /* ================= 시작 ================= */
 try{ document.execCommand('defaultParagraphSeparator', false, 'div'); }catch(e){}

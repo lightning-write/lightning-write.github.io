@@ -213,12 +213,13 @@ async function flush(){
   }finally{ saving = false; }
   if(dirty) schedule(800);
 }
-async function newMs(title, html){
+async function newMs(title, html, kind){
   await flush();
   const id = newId();
   cur = {id};
   setContent(html || '', title || '');
   dirty = true; await flush();
+  if(kind){ await saveLt(id, {kind}); document.dispatchEvent(new Event('wongo:open')); }  // 글 종류는 새 원고를 만들 때 정한다
   lsSet('last', id); await refreshList();
   paper.focus();
 }
@@ -412,7 +413,14 @@ $('#lh').oninput = () => { prefs.lh = +$('#lh').value; savePrefs(); applyPrefs()
 $('#indent').onchange = () => { prefs.indent = $('#indent').checked; savePrefs(); applyPrefs(); };
 
 $('#title').addEventListener('input', onEdit);
-$('#newBtn').onclick = () => newMs();
+/* 새 원고: 글 종류를 먼저 고른다(소설·시나리오·개요·메일·산문). 고른 종류는 원고의 lt.kind로 남는다 */
+const newDlg = $('#newDlg');
+const closeNew = () => { newDlg.hidden = true; };
+$('#newBtn').onclick = () => { closePops(); newDlg.hidden = false; const f = newDlg.querySelector('[data-kind="novel"]'); if(f && !narrow()) f.focus(); };
+newDlg.querySelectorAll('[data-kind]').forEach(b => { b.onclick = async () => { closeNew(); await newMs('', '', b.dataset.kind); if(narrow()) drawer(false); }; });
+$('#newClose').onclick = closeNew;
+newDlg.addEventListener('click', e => { if(e.target === newDlg) closeNew(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && !newDlg.hidden){ closeNew(); e.stopPropagation(); } }, true);
 
 /* ---------- 찾기 · 바꾸기 ---------- */
 function textNodes(){ const w = document.createTreeWalker(paper, NodeFilter.SHOW_TEXT); const a = []; let n; while((n = w.nextNode())) a.push(n); return a; }
