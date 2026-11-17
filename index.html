@@ -203,6 +203,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #fab.away{opacity:0;pointer-events:none;transform:translateY(-10px)}
 
 #app.focus #scroll{padding-top:56px}
+#app.focus #paper{margin-top:calc(-1 * var(--fs,16px) * var(--lh,1.9))}   /* 메뉴를 접으면 글이 한 줄 위에서 시작 */
 
 @media (max-width:820px){
   #side{position:fixed;z-index:30;top:0;bottom:0;left:0;width:min(300px,86vw);padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));padding-left:max(12px,env(safe-area-inset-left,0px));transform:translateX(-102%);transition:transform .2s ease;box-shadow:4px 0 24px rgba(0,0,0,.18)}
