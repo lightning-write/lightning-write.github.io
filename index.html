@@ -94,8 +94,11 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .btnlike:hover{background:var(--hover)}
 .btnlike:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #bar{background:var(--chrome);border-bottom:1px solid var(--line);flex:none;position:relative;z-index:5}
-.row{display:flex;align-items:center;gap:8px;padding-block:7px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-#title{flex:1;min-width:0;border-color:transparent;background:transparent;font-size:15px;font-weight:500;padding:4px 6px}
+.row{display:flex;align-items:center;gap:8px;padding-block:4px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#title{flex:1;min-width:0;border-color:transparent;background:transparent;font-size:15px;font-weight:500;padding:2px 6px}
+#bar .icon{width:32px;height:32px}
+#bar .icon svg{width:19px;height:19px}
+#bar .row{row-gap:0}
 #title:hover,#title:focus{border-color:var(--line);background:var(--paper)}
 #saveState{font-size:12px;color:var(--muted);white-space:nowrap}
 #saveState.err{color:var(--warn)}
