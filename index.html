@@ -529,10 +529,10 @@ button.danger:disabled{opacity:.4}
     <label class="pop-row">첫 줄 들여쓰기 <input id="indent" type="checkbox" checked></label>
   </div>
   <div id="modePop" class="pop menu" role="menu" hidden>
-    <div class="mh">모드<small>번개와 build가 이 모드에 맞게 씁니다</small></div>
-    <button class="mi" role="menuitemradio" data-mode="novel">소설 모드<small>문장·문단 이어 쓰기, 문체 따라가기</small></button>
-    <button class="mi" role="menuitemradio" data-mode="script">시나리오 모드<small>씬 제목·지문·대사를 줄 단위로</small></button>
-    <button class="mi" role="menuitemradio" data-mode="prose">산문 모드<small>메일·메모·칼럼을 글을 보고 알아서 구분</small></button>
+    <div class="mh">글 종류<small>번개와 build가 이 종류에 맞게 씁니다</small></div>
+    <button class="mi" role="menuitemradio" data-mode="novel">소설<small>문장·문단 이어 쓰기, 문체 따라가기</small></button>
+    <button class="mi" role="menuitemradio" data-mode="script">시나리오<small>씬 제목·지문·대사를 줄 단위로</small></button>
+    <button class="mi" role="menuitemradio" data-mode="prose">산문<small>메일·메모·칼럼을 글을 보고 알아서 구분</small></button>
   </div>
   <div id="openPop" class="pop menu" role="menu" hidden>
     <div class="mh">편집 모드<small>원고로 불러와 고칩니다</small></div>
@@ -605,7 +605,7 @@ button.danger:disabled{opacity:.4}
   </div>
 
   <footer id="status">
-    <button id="modeBtn" type="button" data-pop="modePop" data-up="1" aria-haspopup="true" aria-expanded="false" title="글 종류(모드). 눌러서 바꿉니다. 번개와 build가 그 모드에 맞게 씁니다">소설 모드 ▾</button>
+    <button id="modeBtn" type="button" data-pop="modePop" data-up="1" aria-haspopup="true" aria-expanded="false" title="글 종류. 눌러서 바꿉니다. 번개와 build가 그 종류에 맞게 씁니다">소설 ▾</button>
     <span>공백 포함 <b id="sChars">0</b>자</span>
     <span>공백 제외 <b id="sNoSp">0</b>자</span>
     <span>원고지 <b id="sPages">0</b>매</span>
@@ -616,10 +616,10 @@ button.danger:disabled{opacity:.4}
 <div id="newDlg" hidden role="dialog" aria-modal="true" aria-labelledby="newTitle">
   <div id="newBox">
     <header><h2 id="newTitle">새 원고</h2><button id="newClose" class="ghost" type="button">닫기</button></header>
-    <p class="hint">모드를 고르세요. 번개와 build가 그 모드에 맞게 씁니다. 아래쪽 표시줄에서 언제든 바꿀 수 있습니다.</p>
-    <button class="mi" type="button" data-kind="novel">소설 모드<small>문장·문단 이어 쓰기, 문체 따라가기</small></button>
-    <button class="mi" type="button" data-kind="script">시나리오 모드<small>씬 제목·지문·대사를 줄 단위로</small></button>
-    <button class="mi" type="button" data-kind="prose">산문 모드<small>메일·메모·칼럼을 글을 보고 알아서 구분</small></button>
+    <p class="hint">글 종류를 고르세요. 번개와 build가 그 종류에 맞게 씁니다. 아래쪽 표시줄에서 언제든 바꿀 수 있습니다.</p>
+    <button class="mi" type="button" data-kind="novel">소설<small>문장·문단 이어 쓰기, 문체 따라가기</small></button>
+    <button class="mi" type="button" data-kind="script">시나리오<small>씬 제목·지문·대사를 줄 단위로</small></button>
+    <button class="mi" type="button" data-kind="prose">산문<small>메일·메모·칼럼을 글을 보고 알아서 구분</small></button>
   </div>
 </div>
 

@@ -70,7 +70,7 @@ const stNoun = () => kindId() === 'script' ? '시나리오' : kindId() === 'nove
 function renderKind(){
   const m = modeId(), mb = $('#modeBtn');
   document.querySelectorAll('#modePop [data-mode]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === m)));
-  if(mb){ const sub = m === 'prose' && typeof lt !== 'undefined' && ltId ? ' · ' + PROSE_NAME[kindId()] : ''; mb.textContent = MODES[m] + ' 모드' + sub + ' ▾'; mb.setAttribute('aria-label', '모드: ' + MODES[m] + (sub ? ' (' + PROSE_NAME[kindId()] + '로 보임)' : '') + '. 눌러서 바꿉니다'); }
+  if(mb){ const sub = m === 'prose' && typeof lt !== 'undefined' && ltId ? ' · ' + PROSE_NAME[kindId()] : ''; mb.textContent = MODES[m] + sub + ' ▾'; mb.setAttribute('aria-label', '글 종류: ' + MODES[m] + (sub ? ' (' + PROSE_NAME[kindId()] + '로 보임)' : '') + '. 눌러서 바꿉니다'); }
   renderPrefs();
 }
 let proseT = null;
@@ -1518,7 +1518,7 @@ $('#setBtn').onclick = () => { if(narrow()) app.classList.remove('drawer'); open
 document.querySelectorAll('#modePop [data-mode]').forEach(b => { b.onclick = () => {
   const m = b.dataset.mode; if(!MODES[m] || !ltId) return;
   if(modeId() !== m){ lt.kind = m; proseDirty = true; markLt(); }
-  renderKind(); toast(MODES[m] + ' 모드' + (m === 'prose' ? ' · 글을 보고 메일·메모·칼럼을 알아서 구분합니다' : KIND[m].line ? ' · 번개가 새 줄에서 줄 단위로 씁니다' : ''), 2600);
+  renderKind(); toast('글 종류 · ' + MODES[m] + (m === 'prose' ? ' · 글을 보고 메일·메모·칼럼을 알아서 구분합니다' : KIND[m].line ? ' · 번개가 새 줄에서 줄 단위로 씁니다' : ''), 2600);
 }; });
 
 /* ================= 시작 ================= */

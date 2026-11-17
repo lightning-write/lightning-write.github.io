@@ -270,11 +270,12 @@ async function openNext(){
 async function trashMs(id){
   if(cur && cur.id === id) await flush();
   const r = await DB.get(id); if(!r) return;
-  if(!r.fileId && isBlank(r)) await DB.del(id);  // 아무것도 안 쓴 새 원고는 바로 지움
+  const nothing = !r.fileId && isBlank(r) && ltEmpty(r.lt);
+  if(nothing) await DB.del(id);  // 아무것도 안 쓴 새 원고는 바로 지움
   else await DB.update(id, x => x ? Object.assign({}, x, {trashed: true, trashedAt: Date.now(), dirty: true}) : undefined);
   await refreshList();
   if(cur && cur.id === id) await openNext();
-  if(r.fileId || !isBlank(r)) notice('「' + (r.title || '제목 없는 원고') + '」을(를) 휴지통으로 옮겼습니다.', '되돌리기', () => { $('#notice').hidden = true; restoreMs(id); });
+  if(!nothing) notice('「' + (r.title || '제목 없는 원고') + '」을(를) 휴지통으로 옮겼습니다.', '되돌리기', () => { $('#notice').hidden = true; restoreMs(id); });
   Drive.soon(1500);
 }
 async function restoreMs(id){
@@ -306,6 +307,8 @@ async function removeMs(id){
 }
 
 const isBlank = r => !r.chars && (!r.title || r.title === '제목 없는 원고');
+/* 라이트닝 자료가 비어 있고 글 종류도 소설(기본)이면 비었다고 본다. 시나리오·산문으로 정했거나 조각·스토밍 개요가 있으면 글 없이도 휴지통으로 보낸다 */
+const ltEmpty = lt => !lt || (!(lt.frags || []).length && !lt.storm && !lt.mark && (!lt.kind || lt.kind === 'novel'));
 /* 라이트닝 자료(조각·정리 위치·스토밍)를 기록에 쓴다. lightning.js가 부른다 */
 async function saveLt(id, lt){
   if(!cur || cur.id !== id) return;
