@@ -39,14 +39,42 @@ const KIND = {
   mail:    {name: '메일·편지', head: '작성자가 메일(또는 편지)을 쓰고 있다.', thing: '메일 초안', line: false, unitS: '새 문장 한두 개', unitP: '한 문단(새 문장 3~5개)', tipS: '한두 문장', tipP: '한 문단'},
   essay:   {name: '산문·칼럼', head: '필자가 산문(칼럼)을 쓰고 있다.', thing: '초고', line: false, unitS: '새 문장 한두 개', unitP: '한 문단(새 문장 3~5개)', tipS: '한두 문장', tipP: '한 문단'}
 };
-const kindId = () => lt && KIND[lt.kind] ? lt.kind : 'novel';
+/* 모드: 소설 / 시나리오 / 산문. 산문은 글을 보고 메일·메모(개요)·칼럼(산문) 가운데 하나로 알아서 구분한다.
+   lt.kind에는 novel · script · prose를 쓴다(옛 outline·mail·essay는 산문으로 읽는다). kindId()는 실제로 쓰는 종류를 돌려준다. */
+const MODES = {novel: '소설', script: '시나리오', prose: '산문'};
+const PROSE_NAME = {outline: '메모', mail: '메일', essay: '칼럼'};
+const modeId = () => { const k = lt && lt.kind; return k === 'script' ? 'script' : (k === 'prose' || k === 'outline' || k === 'mail' || k === 'essay') ? 'prose' : 'novel'; };
+let proseK = 'essay', proseDirty = true;
+function detectProse(){
+  const t = (paper.innerText || '').replace(/\u00a0/g, ' ');
+  const ls = t.split(/\n+/).map(x => x.trim()).filter(Boolean);
+  if(!ls.length) return 'essay';
+  const bullet = /^(\d{1,3}[.)]|\(\d{1,3}\)|[가-힣ㄱ-ㅎ][.)]|[-–•·*▪▫◦○●□■▶▷◆◇ㅇ])\s*\S/;
+  const nb = ls.filter(x => bullet.test(x)).length;
+  if(ls.length >= 3 && nb / ls.length >= 0.5) return 'outline';
+  const head = ls.slice(0, 3).join('\n'), tail = ls.slice(-3).join('\n');
+  const hi = /(안녕하세요|안녕하십니까|님께|님,|님\s*께서|귀하|께\s*$|^(제목|Subject|To|받는\s*사람|보내는\s*사람)\s*[:：])/m.test(head);
+  const so = /(드립니다|올립니다|드림|올림|감사합니다|감사드립니다|배상|Best regards|Regards|Sincerely)[.!\s]*$/m.test(tail);
+  if(hi || (so && t.length < 3000)) return 'mail';
+  return 'essay';
+}
+const kindId = () => {
+  const m = modeId(); if(m !== 'prose') return m;
+  if(proseDirty){ proseK = detectProse(); proseDirty = false; }
+  return proseK;
+};
 const kindDef = () => KIND[kindId()];
 const josa = (w, a, b) => { const ch = String(w).replace(/[^가-힣]+$/, '').slice(-1); const c = ch ? ch.charCodeAt(0) - 0xAC00 : -1; return c >= 0 && c <= 11171 && c % 28 ? a : b; };
 const stWho = () => kindId() === 'script' ? '시나리오 작가' : kindId() === 'novel' ? '소설가' : '작가';
 const stNoun = () => kindId() === 'script' ? '시나리오' : kindId() === 'novel' ? '소설' : '이야기';
 function renderKind(){
+  const m = modeId(), mb = $('#modeBtn');
+  document.querySelectorAll('#modePop [data-mode]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === m)));
+  if(mb){ const sub = m === 'prose' && typeof lt !== 'undefined' && ltId ? ' · ' + PROSE_NAME[kindId()] : ''; mb.textContent = MODES[m] + ' 모드' + sub + ' ▾'; mb.setAttribute('aria-label', '모드: ' + MODES[m] + (sub ? ' (' + PROSE_NAME[kindId()] + '로 보임)' : '') + '. 눌러서 바꿉니다'); }
   renderPrefs();
 }
+let proseT = null;
+paper.addEventListener('input', () => { proseDirty = true; if(modeId() === 'prose'){ clearTimeout(proseT); proseT = setTimeout(renderKind, 700); } });
 function renderPrefs(){
   const para = prefs.len === 'para', b = $('#lenBtn'), D = KIND[typeof lt === 'undefined' ? 'novel' : kindId()];
   b.dataset.tip = para ? 'blocks' : 'block';
@@ -76,7 +104,7 @@ async function loadLt(){
 }
 function saveLt(){ clearTimeout(ltT); ltT = null; if(!ltId || !W.cur() || W.cur().id !== ltId) return; W.saveLt(ltId, lt); }
 function markLt(){ clearTimeout(ltT); ltT = setTimeout(saveLt, 700); }
-document.addEventListener('wongo:open', () => { stopGen(); hideSug(); lastSug = null; rejected.clear(); undoSt = null; stRv = null; stCT = null; stOpen.clear(); stAuto.clear(); clearTimeout(reflT); if(stBusy) stBusy.ctl.abort(); if(ltT) saveLt(); loadLt(); });
+document.addEventListener('wongo:open', () => { proseDirty = true; stopGen(); hideSug(); lastSug = null; rejected.clear(); undoSt = null; stRv = null; stCT = null; stOpen.clear(); stAuto.clear(); clearTimeout(reflT); if(stBusy) stBusy.ctl.abort(); if(ltT) saveLt(); loadLt(); });
 document.addEventListener('wongo:synced', () => { if(!gen && !stBusy && !tidyBusy() && !ltT) loadLt(); });
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden' && ltT) saveLt(); });
 window.addEventListener('pagehide', () => { if(ltT) saveLt(); });
@@ -258,6 +286,7 @@ function contextAt(b, r){
   };
 }
 function boltPrompt(c, frags, rej, len){
+  proseDirty = true;
   const k = kindId(), D = KIND[k], para = len === 'para', unit = para ? D.unitP : D.unitS, line = D.line;
   const L = [];
   L.push(D.head + ' [원고] 끝의 ▶ 자리에 바로 이어질 ' + unit + josa(unit, '을', '를') + ' 써 줘.', '');
@@ -598,6 +627,7 @@ function computeRange(endB, selR, x){
   return {how, paras, n, chars, before: ctxText(bs, s - 1, -1), after: ctxText(bs, e + 1, 1)};
 }
 function tidyPrompt(se, frags){
+  proseDirty = true;
   const needKw = frags.some(f => !f.k || !f.k.length);
   const L = [];
   const kd = kindDef(), kk = kindId();
@@ -1483,6 +1513,13 @@ $('#aiModel').onchange = () => { AI.setModel($('#aiModel').value); renderAi(); a
 $('#aiForget').onclick = () => { AI.setKey(''); AI.setModel(''); AI.setModels([]); renderAi(); aiMsg('이 기기에서 키를 지웠습니다.'); };
 $('#aiShow').onclick = () => { const i = $('#aiKey'); i.type = i.type === 'password' ? 'text' : 'password'; $('#aiShow').textContent = i.type === 'password' ? '보기' : '가리기'; };
 $('#setBtn').onclick = () => { if(narrow()) app.classList.remove('drawer'); openAi(); };
+
+/* ================= 모드 고르기 (아래쪽 표시줄) ================= */
+document.querySelectorAll('#modePop [data-mode]').forEach(b => { b.onclick = () => {
+  const m = b.dataset.mode; if(!MODES[m] || !ltId) return;
+  if(modeId() !== m){ lt.kind = m; proseDirty = true; markLt(); }
+  renderKind(); toast(MODES[m] + ' 모드' + (m === 'prose' ? ' · 글을 보고 메일·메모·칼럼을 알아서 구분합니다' : KIND[m].line ? ' · 번개가 새 줄에서 줄 단위로 씁니다' : ''), 2600);
+}; });
 
 /* ================= 시작 ================= */
 try{ document.execCommand('defaultParagraphSeparator', false, 'div'); }catch(e){}

@@ -635,6 +635,11 @@ function togglePop(btn){
   closePops();
   pop.hidden = false; openPop = pop; btn.setAttribute('aria-expanded', 'true');
   const r = btn.getBoundingClientRect();
+  if(btn.dataset.up){   // 아래쪽 표시줄의 단추: 위로 펼친다
+    pop.style.top = 'auto'; pop.style.bottom = Math.round(innerHeight - r.top + 6) + 'px';
+    pop.style.left = Math.round(Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8))) + 'px';
+    return;
+  }
   pop.style.top = Math.round(r.bottom + 6) + 'px';
   pop.style.left = Math.round(Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))) + 'px';
 }
