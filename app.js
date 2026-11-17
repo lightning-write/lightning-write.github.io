@@ -362,13 +362,9 @@ async function onRemote(ch){
 
 /* ---------- 메뉴 접기 · 목록 ---------- */
 function setFocus(on){ prefs.focus = on; savePrefs(); app.classList.toggle('focus', on); $('#fab').classList.remove('away'); fullScreen(on); if(on){ drawer(false); closeMenu(); } }
-/* 메뉴를 접으면 전체 화면(주소창 숨김), 펼치면 원래대로. 지원하지 않는 기기는 그냥 넘어간다 */
+/* 메뉴를 접어도 브라우저 전체 화면은 켜지 않는다(켜면 '전체 화면을 종료하려면…' 안내가 뜨고 닫히지 않는다). 홈 화면에 설치한 앱은 주소창이 원래 없다. 혹시 이미 전체 화면이면 풀어 준다 */
 function fullScreen(on){
-  try{
-    const d = document;
-    if(on && d.fullscreenEnabled && !d.fullscreenElement) d.documentElement.requestFullscreen({navigationUI: 'hide'}).catch(() => {});
-    else if(!on && d.fullscreenElement) d.exitFullscreen().catch(() => {});
-  }catch(e){}
+  try{ if(document.fullscreenElement) document.exitFullscreen().catch(() => {}); }catch(e){}
 }
 /* 메뉴 버튼이 글과 겹치지 않게: 아래로 내리면 숨고, 위로 올리면 다시 나타난다 */
 let fabTop = 0;
