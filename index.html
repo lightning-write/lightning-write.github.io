@@ -192,7 +192,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #status i{font-style:normal}
 #status .sh{display:none}
 #status b{color:var(--ink);font-weight:500}
-#syncTag{margin-left:auto}
+#syncTag{display:none}   /* 저장·동기화 상태는 위쪽 저장 표시와 설정 창에 있어서 아래 표시줄에서는 숨김 */
 #syncTag.err{color:var(--warn)}
 
 #fab{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));z-index:20;opacity:.45;background:var(--chrome);display:none;box-shadow:0 2px 8px rgba(0,0,0,.08)}
@@ -479,10 +479,11 @@ button.danger:disabled{opacity:.4}
   .sheet-body{padding:14px 16px 28px}
   #boltBtn{bottom:calc(var(--st-h,32px) + 18px + env(safe-area-inset-bottom,0px))}
   #status{flex-wrap:nowrap;gap:4px 10px;padding-block:4px;font-size:12px;white-space:nowrap}
+  #modeBtn{font-size:12px;padding:1px 8px}
+}
+@media (max-width:480px){
   #status .lg{display:none}
   #status .sh{display:inline}
-  #modeBtn{font-size:12px;padding:1px 8px}
-  #syncTag{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:right}
 }
 @media (prefers-reduced-motion:reduce){#paper .lt-live::after,#boltBtn.busy{animation:none}}
 
