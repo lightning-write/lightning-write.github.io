@@ -37,7 +37,7 @@ function applyPrefs(){
   paper.style.setProperty('--ls', (prefs.ls / 100) + 'em');
   paper.style.setProperty('--wb', prefs.wrap === 'word' ? 'keep-all' : 'normal');
   document.documentElement.style.setProperty('--wb', prefs.wrap === 'word' ? 'keep-all' : 'normal');   // 스토밍·build·조각·설정 창도 본문과 같은 줄 바꿈
-  app.classList.toggle('focus', !!prefs.focus);
+  app.classList.toggle('focus', !!prefs.focus); paintBars();
   app.classList.toggle('side-off', !prefs.side);
 }
 
@@ -361,7 +361,16 @@ async function onRemote(ch){
 }
 
 /* ---------- 메뉴 접기 · 목록 ---------- */
-function setFocus(on){ prefs.focus = on; savePrefs(); app.classList.toggle('focus', on); $('#fab').classList.remove('away'); fullScreen(on); if(on){ drawer(false); closeMenu(); } }
+/* 위쪽 상태 표시줄·아래쪽 내비게이션 막대 색: 메뉴가 있을 땐 메뉴 바탕색, 접으면 종이색으로 맞춰 파란 띠가 안 보이게 한다 */
+function paintBars(){
+  try{
+    const m = document.querySelector('meta[name="theme-color"]'); if(!m) return;
+    const v = getComputedStyle(document.documentElement).getPropertyValue(app.classList.contains('focus') ? '--paper' : '--chrome').trim();
+    if(v) m.setAttribute('content', v);
+  }catch(e){}
+}
+try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paintBars); }catch(e){}
+function setFocus(on){ prefs.focus = on; savePrefs(); app.classList.toggle('focus', on); paintBars(); $('#fab').classList.remove('away'); fullScreen(on); if(on){ drawer(false); closeMenu(); } }
 /* 메뉴를 접어도 브라우저 전체 화면은 켜지 않는다(켜면 '전체 화면을 종료하려면…' 안내가 뜨고 닫히지 않는다). 홈 화면에 설치한 앱은 주소창이 원래 없다. 혹시 이미 전체 화면이면 풀어 준다 */
 function fullScreen(on){
   try{ if(document.fullscreenElement) document.exitFullscreen().catch(() => {}); }catch(e){}
