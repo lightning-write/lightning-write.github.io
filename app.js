@@ -416,6 +416,8 @@ $('#lh').oninput = () => { prefs.lh = +$('#lh').value; savePrefs(); applyPrefs()
 $('#indent').onchange = () => { prefs.indent = $('#indent').checked; savePrefs(); applyPrefs(); };
 
 $('#title').addEventListener('input', onEdit);
+/* 아래쪽 표시줄 높이를 재서 번개 단추가 그 위에 뜨게 한다(줄이 늘어도 겹치지 않게) */
+if(window.ResizeObserver) new ResizeObserver(() => document.documentElement.style.setProperty('--st-h', $('#status').offsetHeight + 'px')).observe($('#status'));
 /* 새 원고: 글 종류를 먼저 고른다(소설·시나리오·개요·메일·산문). 고른 종류는 원고의 lt.kind로 남는다 */
 const newDlg = $('#newDlg');
 const closeNew = () => { newDlg.hidden = true; };
