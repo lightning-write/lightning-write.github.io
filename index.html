@@ -458,6 +458,17 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .tr-nav{display:flex;gap:4px}
 .tr-nav button{min-width:40px;font-size:16px!important}
 #trDlg{z-index:70}
+/* 전체 화면으로 읽기: 위·아래 띠를 숨기고 글만. 글을 누르면 띠가 잠깐 글 위로(peek) */
+#trFull .on-on,#trReader.full #trFull .on-off{display:none}
+#trReader.full #trFull .on-on{display:block}
+#trReader.full #trHead,#trReader.full #trBar,#trReader.full #trFoot,#trReader.full #trMsMenu{display:none}
+#trReader.full.peek #trHead,#trReader.full.peek #trFoot{display:flex;position:absolute;left:0;right:0;z-index:6;box-shadow:0 2px 14px rgba(0,0,0,.12)}
+#trReader.full.peek #trHead{top:0;padding-top:calc(8px + env(safe-area-inset-top,0px))}
+#trReader.full.peek #trFoot{bottom:0;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+#trReader.full #trScroll{cursor:default}
+#trReader.full #trDoc{padding-top:max(28px,env(safe-area-inset-top,0px))}
+#trMini{display:none;position:absolute;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:5;font:11.5px var(--ui);color:var(--accent);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:2px 9px;pointer-events:none;opacity:.85}
+#trReader.full.busy:not(.peek) #trMini{display:block}
 #trGl{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--paper);font:13px/1.6 var(--ui);resize:vertical;text-align:left}
 @media (max-width:620px){ #trHead{gap:8px;padding-left:12px} #trInfo{font-size:12px} #trBar{flex-wrap:wrap;row-gap:6px} #trCh{flex:1 1 120px;min-width:0;max-width:none} #trBar .tr-br{display:block;flex:0 0 100%;height:0} #trScroll{padding:0 16px} #trDoc{padding-top:24px} #trFoot{gap:6px} }
 /* ---------- 읽기 모드 · EPUB 만들기 · PDF(인쇄) ---------- */
@@ -826,7 +837,7 @@ button.danger:disabled{opacity:.4}
 </div>
 
 <div id="trReader" hidden role="dialog" aria-modal="true" aria-labelledby="trName">
-  <header id="trHead"><span class="tr-badge">번역 모드</span><b id="trName"></b><span id="trInfo"></span><button id="trClose" type="button">닫기</button></header>
+  <header id="trHead"><span class="tr-badge">번역 모드</span><b id="trName"></b><span id="trInfo"></span><button id="trFull" class="icon" type="button" aria-pressed="false" aria-label="전체 화면으로 읽기" title="전체 화면으로 읽기 (F)"><svg class="on-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="on-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button><button id="trClose" type="button">닫기</button></header>
   <div id="trBar">
     <select id="trCh" aria-label="차례"></select>
     <span class="seg" role="group" aria-label="보기"><button class="seg-b" type="button" data-v="tr" title="번역문만. 아직 옮기지 않은 문단은 원문을 흐리게">번역</button><button class="seg-b" type="button" data-v="both" title="번역문 아래에 원문">대조</button><button class="seg-b" type="button" data-v="src" title="원문만">원문</button></span>
@@ -841,6 +852,7 @@ button.danger:disabled{opacity:.4}
     <button id="trMsAll" class="mi" type="button" role="menuitem">책 전체<small>아직 번역하지 않은 곳은 원문 그대로</small></button>
   </div>
   <div id="trScroll" tabindex="0"><div id="trDoc" class="v-tr"></div></div>
+  <div id="trMini" aria-hidden="true">번역 중</div>
   <footer id="trFoot">
     <span id="trStat" aria-live="polite"></span>
     <button id="trAct" type="button" hidden></button>

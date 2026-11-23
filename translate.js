@@ -384,6 +384,7 @@ function live(job, text){
 }
 function foot(){
   if(!bk) return;
+  reader.classList.toggle('busy', !!(tq.busy && tq.job));
   const st = $('#trStat'), act = $('#trAct'), all = $('#trAll'), c = counts();
   st.className = ''; act.hidden = true; act.onclick = null;
   all.hidden = c.done >= c.all; all.setAttribute('aria-pressed', String(!!bk.all));
@@ -457,6 +458,37 @@ $('#trCh').onchange = () => go(+$('#trCh').value);
 $('#trPrev').onclick = () => go(view.ch - 1);
 $('#trNext').onclick = () => go(view.ch + 1);
 $('#trAll').onclick = () => { if(!bk) return; bk.all = !bk.all; saveSoon(); if(bk.all){ tq.stopped = false; pump(); } foot(); };
+
+/* 전체 화면으로 읽기: 위·아래 띠를 숨기고 글만 보인다. 되는 기기(안드로이드·PC 브라우저)에서는 브라우저의 전체 화면도 켠다.
+   글을 한 번 누르면 띠가 잠깐 글 위로 나오고(peek), 한 번 더 누르면 들어간다. F 키로 켜고 끄고, Esc로 끈다 */
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+function setFull(on){
+  on = !!on;
+  if(on === reader.classList.contains('full')) return;
+  const pos = posNow();
+  reader.classList.toggle('full', on); reader.classList.remove('peek');
+  $('#trFull').setAttribute('aria-pressed', String(on));
+  $('#trFull').setAttribute('aria-label', on ? '전체 화면 끝내기' : '전체 화면으로 읽기');
+  $('#trFull').title = on ? '전체 화면 끝내기 (F·Esc)' : '전체 화면으로 읽기 (F)';
+  closeMsMenu();
+  try{
+    const root = document.documentElement;   // 페이지 전체를 전체 화면으로(알림·설정 창도 그 위에 뜨게)
+    if(on && !fsEl()){ const rq = root.requestFullscreen || root.webkitRequestFullscreen; if(rq){ const p = rq.call(root, {navigationUI: 'hide'}); if(p && p.catch) p.catch(() => {}); } }
+    if(!on && fsEl()){ const ex = document.exitFullscreen || document.webkitExitFullscreen; if(ex){ const p = ex.call(document); if(p && p.catch) p.catch(() => {}); } }
+  }catch(e){}
+  if(pos) requestAnimationFrame(() => goPos(pos));   // 띠가 사라지거나 나와도 읽던 문단을 그대로
+  if(on) toast('글을 누르면 위·아래 띠가 나옵니다', 2500);
+}
+$('#trFull').onclick = e => { e.stopPropagation(); setFull(!reader.classList.contains('full')); };
+for(const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { if(!fsEl() && reader.classList.contains('full')) setFull(false); });
+scroller.addEventListener('click', e => {
+  if(!reader.classList.contains('full')) return;
+  if(e.target.closest('button, a, select, [contenteditable="true"]')) return;
+  const sel = getSelection(); if(sel && String(sel).trim()) return;   // 글을 고르는 중이면 그대로
+  reader.classList.toggle('peek');
+});
+let peekY = 0;   // 띠가 나온 채 글을 넘기면 띠는 들어간다
+scroller.addEventListener('scroll', () => { if(!reader.classList.contains('peek')) { peekY = scroller.scrollTop; return; } if(Math.abs(scroller.scrollTop - peekY) > 40) reader.classList.remove('peek'); }, {passive: true});
 
 /* 고치기: 번역문을 직접 고친다. 문단 나누기(엔터)는 막고, 붙여 넣기는 글만 */
 function setEdit(on){
@@ -566,6 +598,7 @@ $('#trForget').onclick = async () => {
 
 /* 설정(lightning) 창을 번역 화면 위로 */
 function openSettings(){
+  setFull(false);
   reader.classList.add('under');
   $('#setBtn').click();
   const ai = $('#setAi'); if(ai) ai.open = true;
@@ -658,7 +691,8 @@ function close(quiet){
   if(bk){ savePos(); if(!quiet) save(); }
   if(tq.ctl) tq.ctl.abort();
   bk = null; els = new Map(); doc.textContent = ''; L.live = null;
-  closeMsMenu(); closeDlg(); reader.hidden = true; reader.classList.remove('under');
+  setFull(false);
+  closeMsMenu(); closeDlg(); reader.hidden = true; reader.classList.remove('under', 'busy');
   saveP.then(() => { L.soon(1500); L.render(); });
   if(!narrow()) $('#paper').focus({preventScroll: true});
 }
@@ -671,7 +705,7 @@ window.addEventListener('keydown', e => {
   if(reader.hidden || reader.classList.contains('under')) return;
   if(e.key === 'Escape'){
     e.preventDefault(); e.stopPropagation();
-    if(!$('#trDlg').hidden) closeDlg(); else if(!$('#trMsMenu').hidden) closeMsMenu(); else close();
+    if(!$('#trDlg').hidden) closeDlg(); else if(!$('#trMsMenu').hidden) closeMsMenu(); else if(reader.classList.contains('full')) setFull(false); else close();
     return;
   }
   if(e.ctrlKey || e.metaKey){   // 번역 화면에서는 편집 단축키가 뒤의 원고에 닿지 않게. 찾기(Ctrl+F)는 브라우저 것을 쓴다
@@ -681,6 +715,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   const typing = e.target.closest && (e.target.closest('.k') || /^(input|textarea|select)$/i.test(e.target.localName));
+  if(!typing && !e.altKey && $('#trDlg').hidden && /^f$/i.test(e.key)){ e.preventDefault(); setFull(!reader.classList.contains('full')); return; }
   if(!typing && !e.altKey && $('#trDlg').hidden){
     if(e.key === 'ArrowLeft' && view.ch > 0){ e.preventDefault(); go(view.ch - 1); }
     else if(e.key === 'ArrowRight' && bk && view.ch + 1 < bk.chaps.length){ e.preventDefault(); go(view.ch + 1); }
