@@ -335,7 +335,7 @@ function head(){
 }
 function info(){
   if(!bk) return;
-  $('#trInfo').textContent = (view.ch + 1) + ' / ' + bk.chaps.length + ' · 번역 ' + counts().pct + '%';
+  $('#trInfo').textContent = (view.ch + 1) + '/' + bk.chaps.length + '장 ' + (pg.cur + 1) + '/' + pg.n + '쪽 · 번역 ' + counts().pct + '%';
 }
 function render(){
   const c = bk.chaps[view.ch];
@@ -370,6 +370,7 @@ function paint(i){
     if(t != null) fill(k, t); else k.textContent = '';
     if(view.edit && t != null) k.contentEditable = 'true'; else k.removeAttribute('contenteditable');
   }
+  relayoutSoon();   // 번역문이 들어오면 쪽 나눔이 바뀐다
 }
 const paintJob = job => job.idx.forEach(paint);
 function mark(job, on){ for(const i of job.idx){ const s = els.get(i); if(s) s.classList.toggle('wait', on); } }
@@ -381,6 +382,7 @@ function live(job, text){
     const k = sec.querySelector('.k'); if(!k) continue;
     fill(k, v); sec.classList.add('has'); sec.classList.toggle('live', n === p.last);
   }
+  relayoutSoon();
 }
 function foot(){
   if(!bk) return;
@@ -411,30 +413,83 @@ function go(ch, pos){
   ch = Math.max(0, Math.min(bk.chaps.length - 1, ch));
   closeMsMenu();
   const moved = ch !== view.ch || !els.size;
-  view.ch = ch; render(); chapterList(); info();
-  scroller.scrollTop = 0;
-  if(pos) goPos(pos);
+  view.ch = ch; render(); chapterList();
+  layout(); pg.anchor = null;
+  if(pos && pos.last) show(pg.n - 1, false);   // 앞 장의 끝으로 넘어온 경우
+  else if(pos && (pos.p != null || pos.end)) goPos(pos);
+  else show(0, false);
+  if(!pg.anchor){ const p0 = posNow(); if(p0) pg.anchor = p0; }
+  info();
   if(moved || pos) savePos();
   // 지금 돌고 있는 요청이 이 장이나 다음 장 것이 아니면 멈추고 이 장부터
   if(tq.busy && tq.job && tq.job.ch !== ch && tq.job.ch !== ch + 1 && !bk.all){ tq.again = true; if(tq.ctl) tq.ctl.abort(); }
   else pump();
   foot();
 }
-/* 읽던 자리: 기기마다 화면 폭·글자 크기가 달라도 같은 데로 가도록 '몇 번째 문단의 어디쯤'으로 적는다 */
+/* ---- 쪽 넘기기(읽기 모드와 같은 방식): 장 안의 글을 화면 크기의 단(column)으로 나누고 scrollLeft로 한 장씩.
+   오른쪽 30%·왼쪽으로 쓸기 = 다음 쪽(장 끝이면 다음 장 첫 쪽), 왼쪽 30%·오른쪽으로 쓸기 = 앞 쪽(장 처음이면 앞 장 끝 쪽),
+   가운데 = 띠 숨기기(전체 화면)·잠깐 보이기. 고치기 중에는 번역문을 누르면 글자 자리가 잡힌다.
+   번역문이 들어오거나 보기·글자 크기·화면이 바뀌면 다시 나누고, 읽던 문단(pg.anchor)이 있는 쪽으로 간다 ---- */
+const pg = {stride: 0, n: 1, cur: 0, anchor: null};
+const reduceMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const pageOf = x => Math.floor((x - scroller.getBoundingClientRect().left + scroller.scrollLeft) / pg.stride + 0.002);
+function layout(){
+  const sw = scroller.clientWidth, sh = scroller.clientHeight; if(!sw || !sh) return;
+  const small = sw < 620, padX = small ? 20 : 48, padY = small ? 22 : 40;
+  const colW = Math.min(720, sw - padX * 2), gap = sw - colW, d = doc.style;
+  pg.stride = sw;
+  d.setProperty('--pg-w', colW + 'px'); d.setProperty('--pg-gap', gap + 'px'); d.setProperty('--pg-m', gap / 2 + 'px');
+  d.setProperty('--pg-h', Math.max(80, sh - padY * 2) + 'px'); d.setProperty('--pg-t', padY + 'px');
+  let n = Math.round(scroller.scrollWidth / sw);
+  const last = doc.lastElementChild;
+  if(last){ const rs = last.getClientRects(); if(rs.length) n = Math.max(n, pageOf(rs[rs.length - 1].left) + 1); }
+  pg.n = Math.max(1, n);
+  if(pg.cur > pg.n - 1) pg.cur = pg.n - 1;
+}
+function show(k, smooth){
+  pg.cur = Math.max(0, Math.min(pg.n - 1, k));
+  const left = pg.cur * pg.stride;
+  if(smooth && !reduceMotion()) scroller.scrollTo({left, behavior: 'smooth'}); else scroller.scrollLeft = left;
+  info();
+}
+/* 손으로 넘길 때: 장 끝을 넘어가면 옆 장으로 */
+function turn(k){
+  if(!bk) return;
+  reader.classList.remove('peek');
+  if(k > pg.n - 1){ if(view.ch + 1 < bk.chaps.length) go(view.ch + 1); else show(pg.cur, true); return; }
+  if(k < 0){ if(view.ch > 0) go(view.ch - 1, {last: true}); else show(0, true); return; }
+  show(k, true);
+  const p = posNow(); if(p) pg.anchor = p;
+}
+function relayout(){
+  if(!bk || reader.hidden) return;
+  layout();
+  if(pg.anchor && (pg.anchor.p != null || pg.anchor.end)) goPos(pg.anchor); else show(pg.cur, false);
+}
+let relayT = null;
+function relayoutSoon(){ clearTimeout(relayT); relayT = setTimeout(relayout, 120); }
+new ResizeObserver(() => { if(bk && !reader.hidden) relayoutSoon(); }).observe(scroller);
+if(document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { if(bk && !reader.hidden) relayoutSoon(); });
+/* 읽던 자리: 그 쪽 맨 위에 보이는 문단(data-i)과, 여러 쪽에 걸친 문단이면 몇 번째 조각인지(f) */
 function posNow(){
-  if(!bk || !els.size) return null;
-  const secs = [...els.values()], top = scroller.getBoundingClientRect().top;
-  if(scroller.scrollTop < 20) return {ch: view.ch};
+  if(!bk || !els.size || !pg.stride) return null;
+  if(pg.cur === 0) return {ch: view.ch};
+  const secs = [...els.values()];
+  const lastPage = el => { const rs = el.getClientRects(); return rs.length ? pageOf(rs[rs.length - 1].left) : -1; };
   let lo = 0, hi = secs.length - 1;
-  while(lo < hi){ const m = (lo + hi + 1) >> 1; if(secs[m].getBoundingClientRect().top <= top + 2) lo = m; else hi = m - 1; }
-  const r = secs[lo].getBoundingClientRect();
-  return {ch: view.ch, p: +secs[lo].dataset.i, f: r.height ? Math.round(Math.max(0, Math.min(1, (top - r.top) / r.height)) * 1000) / 1000 : 0};
+  while(lo < hi){ const m = (lo + hi) >> 1; if(lastPage(secs[m]) >= pg.cur) hi = m; else lo = m + 1; }
+  if(lastPage(secs[lo]) < pg.cur) return {ch: view.ch, end: 1};   // 장 끝의 「다음 장」 단추만 있는 쪽
+  const pages = [...new Set([...secs[lo].getClientRects()].map(r => pageOf(r.left)))].sort((a, b) => a - b);
+  const idx = Math.max(0, pages.indexOf(pg.cur));
+  return {ch: view.ch, p: +secs[lo].dataset.i, f: pages.length > 1 ? Math.round(idx / pages.length * 1000) / 1000 : 0};
 }
 function goPos(pos){
-  if(pos.p == null){ if(pos.y) scroller.scrollTop = pos.y; return; }   // y: 옛 판(기기 안에서만)
-  const sec = els.get(pos.p); if(!sec) return;
-  const r = sec.getBoundingClientRect(), top = scroller.getBoundingClientRect().top;
-  scroller.scrollTop += r.top - top + (pos.f || 0) * r.height;
+  pg.anchor = pos;
+  if(pos.end){ show(pg.n - 1, false); return; }
+  const sec = pos.p != null && els.get(pos.p);
+  if(!sec){ show(0, false); return; }
+  const pages = [...new Set([...sec.getClientRects()].map(r => pageOf(r.left)))].sort((a, b) => a - b);
+  show(pages.length ? pages[Math.min(pages.length - 1, Math.floor((pos.f || 0) * pages.length + 0.001))] : 0, false);
 }
 function savePos(){ if(!bk) return; const p = posNow(); if(p) L.setPos(bk.id, p, {pct: counts().pct}).catch(() => {}); }
 let posT = null;
@@ -444,7 +499,7 @@ scroller.addEventListener('scroll', () => { if(!bk || posT) return; posT = setTi
 const FS_MIN = 12, FS_MAX = 44;
 const fsNow = () => { const v = Number(lsGet('tr-fs') || lsGet('rd-fs')); return v >= FS_MIN && v <= FS_MAX ? v : (W.prefs.fs || 16); };
 function setFs(v){ v = Math.max(FS_MIN, Math.min(FS_MAX, Math.round(v))); doc.style.setProperty('--fs', v + 'px'); $('#trSm').disabled = v <= FS_MIN; $('#trLg').disabled = v >= FS_MAX; return v; }
-function stepFs(d){ const v = setFs(fsNow() + d); lsSet('tr-fs', v); toast('글자 크기 ' + v, 1200); }
+function stepFs(d){ const v = setFs(fsNow() + d); lsSet('tr-fs', v); relayout(); toast('글자 크기 ' + v, 1200); }
 $('#trSm').onclick = () => stepFs(-1); $('#trLg').onclick = () => stepFs(1);
 function setView(v){
   if(!['tr', 'both', 'src'].includes(v)) v = 'tr';
@@ -452,6 +507,7 @@ function setView(v){
   view.v = v; lsSet('tr-view', v);
   doc.classList.remove('v-tr', 'v-both', 'v-src'); doc.classList.add('v-' + v);
   document.querySelectorAll('#trBar [data-v]').forEach(b => { const on = b.dataset.v === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  relayout();
 }
 document.querySelectorAll('#trBar [data-v]').forEach(b => { b.onclick = () => setView(b.dataset.v); });
 $('#trCh').onchange = () => go(+$('#trCh').value);
@@ -471,17 +527,45 @@ function setFull(on){
   $('#trFull').setAttribute('aria-label', on ? '전체 화면 끝내기' : '전체 화면으로 읽기');
   $('#trFull').title = on ? '전체 화면 끝내기 (F·Esc)' : '전체 화면으로 읽기 (F)';
   closeMsMenu();
-  if(pos) requestAnimationFrame(() => goPos(pos));   // 띠가 사라지거나 나와도 읽던 문단을 그대로
+  if(pos && (pos.p != null || pos.end)) pg.anchor = pos;   // 띠가 사라지거나 나와 화면 크기가 바뀌어도 읽던 문단을 그대로
+  relayout();
 }
 $('#trFull').onclick = e => { e.stopPropagation(); setFull(!reader.classList.contains('full')); };
+// 누르기: 왼쪽 30% 앞 쪽, 오른쪽 30% 다음 쪽, 가운데는 띠. 고치기 중인 번역문을 누르면 글자 자리만 잡는다
 scroller.addEventListener('click', e => {
-  if(!reader.classList.contains('full')) return;
-  if(e.target.closest('button, a, select, [contenteditable="true"]')) return;
+  if(!bk || e.target.closest('button, a, select, [contenteditable="true"]')) return;
   const sel = getSelection(); if(sel && String(sel).trim()) return;   // 글을 고르는 중이면 그대로
-  reader.classList.toggle('peek');
+  const r = scroller.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+  if(x < 0.3) turn(pg.cur - 1);
+  else if(x > 0.7) turn(pg.cur + 1);
+  else if(!reader.classList.contains('full')) setFull(true);
+  else reader.classList.toggle('peek');
 });
-let peekY = 0;   // 띠가 나온 채 글을 넘기면 띠는 들어간다
-scroller.addEventListener('scroll', () => { if(!reader.classList.contains('peek')) { peekY = scroller.scrollTop; return; } if(Math.abs(scroller.scrollTop - peekY) > 40) reader.classList.remove('peek'); }, {passive: true});
+// 쓸기: 손가락을 따라 옆으로 움직이다가, 충분히 쓸었으면 다음·앞 쪽으로, 아니면 제자리로
+let sw0 = null;
+scroller.addEventListener('touchstart', e => { if(e.touches.length !== 1){ sw0 = null; return; } const t = e.touches[0]; sw0 = {x: t.clientX, y: t.clientY, t: Date.now(), left: pg.cur * pg.stride, moved: false}; }, {passive: true});
+scroller.addEventListener('touchmove', e => {
+  if(!sw0 || e.touches.length !== 1) return;
+  const t = e.touches[0], dx = t.clientX - sw0.x, dy = t.clientY - sw0.y;
+  if(!sw0.moved && Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+  sw0.moved = true;
+  if(Math.abs(dx) > Math.abs(dy)) scroller.scrollLeft = sw0.left - dx;
+}, {passive: true});
+scroller.addEventListener('touchend', e => {
+  const s0 = sw0; sw0 = null; if(!s0 || !s0.moved) return;
+  const t = e.changedTouches[0], dx = t.clientX - s0.x, dy = t.clientY - s0.y, v = Math.abs(dx) / Math.max(1, Date.now() - s0.t);
+  if(Math.abs(dx) > Math.abs(dy) && (Math.abs(dx) > pg.stride * 0.18 || v > 0.35)) turn(pg.cur + (dx < 0 ? 1 : -1));
+  else show(pg.cur, true);
+}, {passive: true});
+scroller.addEventListener('touchcancel', () => { if(sw0 && sw0.moved) show(pg.cur, true); sw0 = null; }, {passive: true});
+let wheelAt = 0;
+scroller.addEventListener('wheel', e => {
+  if(e.ctrlKey) return;
+  e.preventDefault();
+  const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX, now = Date.now();
+  if(Math.abs(d) < 4 || now - wheelAt < 380) return;
+  wheelAt = now; turn(pg.cur + (d > 0 ? 1 : -1));
+}, {passive: false});
 
 /* 고치기: 번역문을 직접 고친다. 문단 나누기(엔터)는 막고, 붙여 넣기는 글만 */
 function setEdit(on){
@@ -491,6 +575,7 @@ function setEdit(on){
   if(view.edit && view.v === 'src') setView('both');
   for(const i of els.keys()) paint(i);
   if(view.edit) toast('번역문을 눌러 고치세요. 고친 문단은 다시 번역해도 그대로 둡니다.', 4000);
+  if(view.edit && reader.classList.contains('full')) setFull(false);
 }
 $('#trEdit').onclick = () => setEdit(!view.edit);
 const edDirty = new Set(); let edT = null;
@@ -575,7 +660,8 @@ $('#trRedo').onclick = () => {
   for(let i = c.a; i < c.b; i++){ if(bk.ed[i] || bk.paras[i].s) continue; if(bk.tr[i] != null || bk.fail[i]){ n++; touch(i); } delete bk.tr[i]; delete bk.fail[i]; delete bk.tries[i]; }
   save(); closeDlg();
   if(tq.busy && tq.job && tq.job.ch === view.ch){ tq.again = true; if(tq.ctl) tq.ctl.abort(); }
-  render(); chapterList(); info(); tq.stopped = false; tq.err = null; pump();
+  const keep = posNow(); render(); chapterList(); layout(); if(keep && keep.p != null) goPos(keep); else show(0, false);
+  tq.stopped = false; tq.err = null; pump();
   toast(n ? '이 장을 다시 옮깁니다' : '다시 옮길 문단이 없습니다', 3000);
 };
 $('#trForget').onclick = async () => {
@@ -617,7 +703,8 @@ function shell(name){
   $('#trName').textContent = name; $('#trInfo').textContent = ''; $('#trStat').textContent = ''; $('#trAct').hidden = true; $('#trAll').hidden = true;
   $('#trCh').textContent = '';
   doc.innerHTML = '<p class="rd-wait">여는 중…</p>';
-  reader.hidden = false; scroller.scrollTop = 0; scroller.focus({preventScroll: true});
+  pg.cur = 0; pg.n = 1; pg.anchor = null;
+  reader.hidden = false; scroller.scrollTop = 0; scroller.scrollLeft = 0; scroller.focus({preventScroll: true});
   if(narrow()) $('#app').classList.remove('drawer');
 }
 /* 다른 기기가 같은 책에 더한 번역을 지금 화면의 기록에 합친다(library.js가 부른다) */
@@ -708,9 +795,10 @@ window.addEventListener('keydown', e => {
   }
   const typing = e.target.closest && (e.target.closest('.k') || /^(input|textarea|select)$/i.test(e.target.localName));
   if(!typing && !e.altKey && $('#trDlg').hidden && /^f$/i.test(e.key)){ e.preventDefault(); setFull(!reader.classList.contains('full')); return; }
-  if(!typing && !e.altKey && $('#trDlg').hidden){
-    if(e.key === 'ArrowLeft' && view.ch > 0){ e.preventDefault(); go(view.ch - 1); }
-    else if(e.key === 'ArrowRight' && bk && view.ch + 1 < bk.chaps.length){ e.preventDefault(); go(view.ch + 1); }
+  if(!typing && !e.altKey && $('#trDlg').hidden && bk){   // 쪽 넘기기
+    const k = e.key, next = k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || (k === ' ' && !e.shiftKey), prev = k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp' || (k === ' ' && e.shiftKey);
+    if(next || prev){ e.preventDefault(); turn(pg.cur + (next ? 1 : -1)); }
+    else if(k === 'Home' || k === 'End'){ e.preventDefault(); show(k === 'Home' ? 0 : pg.n - 1, true); const p = posNow(); if(p) pg.anchor = p; }
   }
 }, true);
 window.addEventListener('pagehide', () => { if(bk){ flushEdits(); savePos(); } });

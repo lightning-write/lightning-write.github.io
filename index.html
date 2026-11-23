@@ -473,12 +473,17 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #reader.paged #rdDoc .rd-part + .rd-part{break-before:column;border-top:0;padding-top:0}
 #reader.paged #rdDoc.pdf{display:flex;align-items:center;flex-wrap:nowrap;max-width:none;width:max-content;height:100%;margin:0;padding:0}
 #reader.paged .pdf-page{flex:none;box-shadow:0 1px 8px rgba(0,0,0,.2)}
+/* 번역 모드도 쪽 넘기기 */
+#trReader.paged #trScroll{overflow:hidden;padding:0;touch-action:none;overscroll-behavior:none}
+#trReader.paged #trDoc{max-width:none;width:var(--pg-w,auto);height:var(--pg-h,auto);margin:var(--pg-t,24px) 0 0 var(--pg-m,20px);padding:0;column-width:var(--pg-w,auto);column-gap:var(--pg-gap,40px);column-fill:auto}
+#trReader.paged #trDoc .tp.c{break-after:avoid}
+#trReader.paged .tr-end{break-inside:avoid}
 #trReader.full #trHead,#trReader.full #trBar,#trReader.full #trFoot,#trReader.full #trMsMenu{display:none}
 #trReader.full.peek #trHead,#trReader.full.peek #trFoot{display:flex;position:absolute;left:0;right:0;z-index:6;box-shadow:0 2px 14px rgba(0,0,0,.12)}
 #trReader.full.peek #trHead{top:0;padding-top:calc(8px + env(safe-area-inset-top,0px))}
 #trReader.full.peek #trFoot{bottom:0;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
 #trReader.full #trScroll{cursor:default}
-#trReader.full #trDoc{padding-top:max(28px,env(safe-area-inset-top,0px))}
+#trReader.full:not(.paged) #trDoc{padding-top:max(28px,env(safe-area-inset-top,0px))}
 #trMini{display:none;position:absolute;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:5;font:11.5px var(--ui);color:var(--accent);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:2px 9px;pointer-events:none;opacity:.85}
 #trReader.full.busy:not(.peek) #trMini{display:block}
 #trGl{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--paper);font:13px/1.6 var(--ui);resize:vertical;text-align:left}
@@ -848,7 +853,7 @@ button.danger:disabled{opacity:.4}
   <div id="rdScroll" tabindex="0"><div id="rdDoc"></div></div>
 </div>
 
-<div id="trReader" hidden role="dialog" aria-modal="true" aria-labelledby="trName">
+<div id="trReader" class="paged" hidden role="dialog" aria-modal="true" aria-labelledby="trName">
   <header id="trHead"><span class="tr-badge">번역 모드</span><b id="trName"></b><span id="trInfo"></span><button id="trFull" class="icon" type="button" aria-pressed="false" aria-label="전체 화면으로 읽기" title="전체 화면으로 읽기 (F)"><svg class="on-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="on-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button><button id="trClose" type="button">닫기</button></header>
   <div id="trBar">
     <select id="trCh" aria-label="차례"></select>
