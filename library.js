@@ -264,28 +264,20 @@ async function sync(){
 }
 document.addEventListener('wongo:synced', () => sync());
 
-/* ================= 열기 메뉴의 「이어 읽기」와 서재 창 ================= */
-const day = t => { const d = new Date(t || 0); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일'; };
+/* ================= 열기 메뉴: 읽기 모드·번역 모드 묶음 안의 「이어 읽기」 =================
+   묶음마다 최근 세 개. ✕를 누르면 「지우기」로 바뀌고, 한 번 더 누르면 이 기기와 드라이브(휴지통)에서 지운다 */
+const SHOW = 3;
 const label = m => m.type === 'tr' ? (m.trTitle || m.title || '번역한 책') : (m.title || m.name || '문서');
-function sub(m, long){
-  const bits = [];
-  if(m.type === 'tr') bits.push('번역 ' + (m.pct || 0) + '%' + (m.trTitle && m.title ? ' · ' + m.title : ''));
-  else {
-    bits.push((m.kind || '').toUpperCase() || '문서');
-    if(m.pos && m.pos.pg) bits.push(m.pos.pg + (m.pages ? ' / ' + m.pages : '') + '쪽');
-    else if(m.pct) bits.push(m.pct + '%');
-  }
-  if(m.at) bits.push(day(m.at));
-  if(long){
-    if(m.stub) bits.push('다른 기기에서 · 열면 받아 옵니다');
-    else if(m.big) bits.push('용량이 커서 이 기기에만');
-    else if(m.fileId) bits.push('드라이브에 있음');
-    else bits.push(W.Drive && W.Drive.connected() ? '드라이브에 올리는 중' : '이 기기에만 · 드라이브에 연결하면 올라갑니다');
-  } else if(m.stub) bits.push('다른 기기에서');
+function progress(m){
+  const bits = ['이어 읽기'];
+  if(m.type === 'tr') bits.push('번역 ' + (m.pct || 0) + '%');
+  else if(m.pos && m.pos.pg) bits.push(m.pos.pg + (m.pages ? '/' + m.pages : '') + '쪽');
+  else if(m.pct) bits.push(m.pct + '%');
+  if(m.stub) bits.push('다른 기기');
   return bits.join(' · ');
 }
 async function open(m){
-  W.closePops(); closeDlg();
+  W.closePops();
   try{
     if(m.type === 'tr') await window.__tr.openSaved(m.id);
     else { const f = await rdFile(m.id); if(f) await window.__books.readFile(f, m.title || m.name, {libId: m.id}); }
@@ -294,52 +286,36 @@ async function open(m){
     toast(e && e.code === 'nofile' ? '이 문서의 파일이 이 기기에 없습니다. 파일을 다시 열어 주세요.' : e && e.code === 'network' ? '인터넷에 연결된 뒤 드라이브에서 받을 수 있습니다.' : e && e.code === 'auth' ? '드라이브 연결이 만료되었습니다. 원고 목록 아래 「다시 연결」을 누른 뒤 열어 주세요.' : '열지 못했습니다.', 7000);
   }
 }
-function row(m, long){
+function row(m){
   const r = document.createElement('div'); r.className = 'lib-row';
   const b = document.createElement('button'); b.type = 'button'; b.className = 'mi'; b.setAttribute('role', 'menuitem');
-  b.innerHTML = '<span class="lib-k"></span><b></b><small></small>';
-  b.children[0].textContent = m.type === 'tr' ? '번역' : '읽기';
-  b.children[1].textContent = '「' + label(m) + '」';
-  b.children[2].textContent = sub(m, long);
+  b.innerHTML = '<b></b><span class="lib-p"></span>';
+  b.firstChild.textContent = '「' + label(m) + '」';
+  b.lastChild.textContent = progress(m);
+  b.title = label(m) + (m.type === 'tr' && m.trTitle && m.title ? ' (' + m.title + ')' : '');
   b.onclick = () => open(m);
-  r.appendChild(b);
-  if(long){
-    const x = document.createElement('button'); x.type = 'button'; x.className = 'tr-x'; x.textContent = '✕';
-    x.title = '서재에서 지우기'; x.setAttribute('aria-label', '「' + label(m) + '」 서재에서 지우기');
-    x.onclick = async e => {
-      e.stopPropagation();
-      if(x.dataset.sure !== '1'){ x.dataset.sure = '1'; x.textContent = '지우기'; setTimeout(() => { x.dataset.sure = ''; x.textContent = '✕'; }, 4000); return; }
-      await forget(m.id); renderDlg();
-    };
-    r.appendChild(x);
-  }
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'tr-x'; x.textContent = '✕';
+  x.title = '지우기'; x.setAttribute('aria-label', '「' + label(m) + '」 지우기');
+  x.onclick = async e => {
+    e.stopPropagation();
+    if(x.dataset.sure !== '1'){ x.dataset.sure = '1'; x.textContent = '지우기'; setTimeout(() => { if(x.isConnected){ x.dataset.sure = ''; x.textContent = '✕'; } }, 4000); return; }
+    x.dataset.sure = ''; r.remove();
+    await forget(m.id);
+  };
+  r.append(b, x);
   return r;
 }
 let renderT = null;
 function render(){ clearTimeout(renderT); renderT = setTimeout(renderNow, 50); }
 async function renderNow(){
-  const box = $('#libRecent'); if(!box) return;
+  const rdBox = $('#libRd'), trBox = $('#libTr'); if(!rdBox || !trBox) return;
+  if(document.querySelector('.lib-rc [data-sure="1"]')){ clearTimeout(renderT); renderT = setTimeout(renderNow, 600); return; }   // ✕를 한 번 누른 채면 기다렸다 그린다
   const ms = await metas();
-  $('#libBox').hidden = !ms.length;
-  box.textContent = '';
-  for(const m of ms.slice(0, 4)) box.appendChild(row(m, false));
-  $('#libAll').lastChild.textContent = '모두 ' + ms.length + '개 · 지우기';
-  if(!$('#libDlg').hidden && !$('#libList [data-sure="1"]')) renderDlg();   // ✕를 한 번 누른 채면 다시 그리지 않는다
+  for(const [box, type] of [[rdBox, 'rd'], [trBox, 'tr']]){
+    box.textContent = '';
+    for(const m of ms.filter(x => x.type === type).slice(0, SHOW)) box.appendChild(row(m));
+  }
 }
-async function renderDlg(){
-  const ms = await metas(), ul = $('#libList');
-  ul.textContent = '';
-  if(!ms.length){ const p = document.createElement('p'); p.className = 'hint'; p.textContent = '아직 없습니다. 열기 → 읽기 모드나 번역 모드로 연 문서가 여기 쌓입니다.'; ul.appendChild(p); }
-  for(const m of ms) ul.appendChild(row(m, true));
-  $('#libState').textContent = !(W.Drive && W.Drive.connected()) ? '드라이브에 연결되어 있지 않아 이 기기에만 있습니다. 원고 목록 아래 「드라이브 연결」을 누르면 다른 기기와 이어집니다.'
-    : lastErr ? (lastErr.code === 'network' ? '인터넷 연결을 기다리는 중입니다.' : '드라이브와 맞추지 못했습니다. 잠시 뒤 다시 합니다.') : '드라이브 \'LWRITE/서재\' 폴더와 맞춰 둡니다.';
-}
-function openDlg(){ W.closePops(); $('#libDlg').hidden = false; renderDlg(); if(drive()) sync(); }
-function closeDlg(){ $('#libDlg').hidden = true; }
-$('#libAll').onclick = openDlg;
-$('#libClose').onclick = closeDlg;
-$('#libDlg').addEventListener('click', e => { if(e.target.id === 'libDlg') closeDlg(); });
-document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('#libDlg').hidden){ e.preventDefault(); e.stopPropagation(); closeDlg(); } }, true);
 // 열기 메뉴를 열 때 드라이브의 서재를 한 번 훑는다(마지막으로 훑은 지 20초가 넘었으면)
 let lastLook = 0;
 $('#openBtn').addEventListener('click', () => { render(); if(drive() && Date.now() - lastLook > 20000){ lastLook = Date.now(); sync(); } });
