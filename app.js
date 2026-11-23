@@ -814,6 +814,7 @@ const Drive = (() => {
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
   const ROOT = 'LWRITE', OLD_ROOTS = ['MYWONGO', '원고 편집기'], DATA = '동기화 자료 (지우지 마세요)';
   const LEFT = 'LWRITE로 옮긴 뒤 남은 폴더 (지워도 됨)';
+  const LIB = '서재 (지우지 마세요)';   // 읽기 모드 문서·번역 책(library.js)
   let token = null, exp = 0, folders = null, running = false, again = false, soonT = null, lastSync = 0, st = 'idle';
   let wanted = !!lsGet('drive-on', false);
   const saved = lsGet('token', null);
@@ -928,6 +929,32 @@ const Drive = (() => {
     return api('/upload/drive/v3/files' + (fileId ? '/' + fileId : '') + '?uploadType=multipart&fields=id,version,webViewLink', {method: fileId ? 'PATCH' : 'POST', headers: {'Content-Type': 'multipart/related; boundary=' + b}, body: payload});
   }
   const safeName = t => (t || '제목 없는 원고').replace(/[\\/]/g, ' ').slice(0, 120);
+  /* 서재(library.js)용: 폴더, 파일 내용 받기, 큰 파일 올리기(5MB 넘으면 이어 올리기) */
+  async function ensureLib(){ const f = await ensureFolders(); if(!f.lib) f.lib = await folder(LIB, f.root); return f.lib; }
+  async function media(id){
+    if(!tokenOk()) throw {code: 'auth'};
+    let r;
+    try{ r = await fetch('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media', {headers: {Authorization: 'Bearer ' + token}}); }catch(e){ throw {code: 'network'}; }
+    if(r.status === 401){ token = null; exp = 0; lsDel('token'); throw {code: 'auth'}; }
+    if(r.status === 404) throw {code: 'notfound'};
+    if(!r.ok) throw {code: 'http', status: r.status};
+    return r.blob();
+  }
+  async function uploadBig(fileId, meta, blob, mime){
+    if(blob.size <= 4.5 * 1048576) return upload(fileId, meta, blob, mime);
+    if(!tokenOk()) throw {code: 'auth'};
+    let r;
+    try{ r = await fetch('https://www.googleapis.com/upload/drive/v3/files' + (fileId ? '/' + fileId : '') + '?uploadType=resumable&fields=id,version', {method: fileId ? 'PATCH' : 'POST', headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime, 'X-Upload-Content-Length': String(blob.size)}, body: JSON.stringify(meta)}); }
+    catch(e){ throw {code: 'network'}; }
+    if(r.status === 401){ token = null; exp = 0; lsDel('token'); throw {code: 'auth'}; }
+    if(r.status === 404) throw {code: 'notfound'};
+    const loc = r.ok && r.headers.get('Location');
+    if(!loc) throw {code: 'http', status: r.status};
+    let r2;
+    try{ r2 = await fetch(loc, {method: 'PUT', headers: {'Content-Type': mime}, body: blob}); }catch(e){ throw {code: 'network'}; }
+    if(!r2.ok) throw {code: 'http', status: r2.status};
+    return r2.json();
+  }
 
   async function sync(){
     if(resetting) return;
@@ -1188,12 +1215,14 @@ const Drive = (() => {
       if(CID && wanted) sync();
     },
     soon, sync, saveHwpx, saveFile, errorText, render, busy: () => running,
+    lib: {ready: () => !!CID && wanted && tokenOk() && navigator.onLine !== false, ensureLib, find, patch, upload: uploadBig, media, forget: () => { folders = null; }},
     connected: () => !!CID && wanted && tokenOk(),
     /* 드라이브의 원고(동기화 자료)와 이 앱이 만든 한글 파일을 모두 휴지통으로. 휴지통에서 30일 동안 되살릴 수 있다 */
     async wipe(){
       if(!tokenOk()) throw {code: 'auth'};
-      const {root, data} = await ensureFolders();
+      const {root, data} = await ensureFolders(), lib = await ensureLib();
       const fs = (await find("'" + data + "' in parents and trashed=false", 'id'))
+        .concat(await find("'" + lib + "' in parents and trashed=false", 'id'))
         .concat(await find("'" + root + "' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'", 'id'));
       for(const f of fs){ try{ await patch(f.id, {trashed: true}); }catch(e){ if(e.code !== 'notfound') throw e; } }
       folders = null;

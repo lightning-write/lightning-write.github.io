@@ -3,44 +3,20 @@
    - 번역은 설정(lightning)의 Gemini 키·모델로 한다. 지금 펼친 장부터 문단마다 번호를 붙여 보내고, 오는 대로 화면에 채운다.
      다음 장은 미리 옮겨 둔다. 「끝까지 번역」을 켜면 이 화면을 열어 둔 동안 책 끝까지 차례로 옮긴다.
    - 사람·땅 이름 표기와 인물 사이 말투는 '표기표'에 모아 다음 대목마다 함께 보낸다. AI가 보태고, 작가가 고칠 수 있다.
-   - 책과 번역은 이 기기(IndexedDB 'wongo-tr')에만 둔다. 같은 책을 다시 열거나 불러오기 메뉴의 「이어 읽기」를 누르면 이어진다.
+   - 책과 번역·읽던 자리는 서재(library.js)에 둔다. 이 기기에 보관되고, 드라이브에 연결돼 있으면 다른 기기와 이어진다.
+     같은 책을 다시 열거나 불러오기 메뉴의 「이어 읽기」를 누르면 이어진다. 문단마다 ts(바뀐 때)를 적어 두 기기의 번역을 합친다.
    - 「고치기」로 번역문을 직접 고치고(고친 문단은 다시 번역해도 그대로), 「원고로」로 편집할 수 있는 원고를 만든다.
    window.__tr = {openFile, openSaved, close} (+ 시험용 내부 함수) */
 (() => {
 'use strict';
-const W = window.__wongo, B = window.__books, AI = window.__ai;
-if(!W || !B || !AI || typeof document === 'undefined') return;
+const W = window.__wongo, B = window.__books, AI = window.__ai, L = window.__lib;
+if(!W || !B || !AI || !L || typeof document === 'undefined') return;
 const $ = s => document.querySelector(s);
 const toast = W.toast, narrow = W.narrow;
 const lsGet = k => { try{ return JSON.parse(localStorage.getItem('wongo-' + k)); }catch(e){ return null; } };
 const lsSet = (k, v) => { try{ localStorage.setItem('wongo-' + k, JSON.stringify(v)); }catch(e){} };
 const lsDel = k => { try{ localStorage.removeItem('wongo-' + k); }catch(e){} };
 const stemOf = name => String(name || '').replace(/\.[^.]+$/, '');
-
-/* ================= 기기 보관함: books(책 전체) · meta(목록용 요약) ================= */
-const TDB = (() => {
-  let dbp = null;
-  const open = () => dbp || (dbp = new Promise((ok, bad) => {
-    const r = indexedDB.open('wongo-tr', 1);
-    r.onupgradeneeded = () => { const d = r.result; for(const n of ['books', 'meta']) if(!d.objectStoreNames.contains(n)) d.createObjectStore(n, {keyPath: 'id'}); };
-    r.onsuccess = () => { const d = r.result; d.onversionchange = () => { d.close(); dbp = null; }; ok(d); };
-    r.onerror = () => { dbp = null; bad(r.error); };
-  }));
-  const run = async (names, mode, body) => {
-    const d = await open();
-    return new Promise((ok, bad) => {
-      const t = d.transaction(names, mode); let out;
-      t.oncomplete = () => ok(out); t.onerror = () => bad(t.error); t.onabort = () => bad(t.error);
-      body(t, v => { out = v; });
-    });
-  };
-  return {
-    get: id => run('books', 'readonly', (t, set) => { const q = t.objectStore('books').get(id); q.onsuccess = () => set(q.result); }),
-    put: (rec, meta) => run(['books', 'meta'], 'readwrite', t => { t.objectStore('books').put(rec); t.objectStore('meta').put(meta); }),
-    metas: () => run('meta', 'readonly', (t, set) => { const q = t.objectStore('meta').getAll(); q.onsuccess = () => set(q.result || []); }),
-    del: id => run(['books', 'meta'], 'readwrite', t => { t.objectStore('books').delete(id); t.objectStore('meta').delete(id); })
-  };
-})();
 
 /* ================= 글 표시: *기울임* · **굵게** ================= */
 const STAR = '＊';   // 원문에 있던 별표는 표시와 섞이지 않게 바꿔 둔다
@@ -240,7 +216,7 @@ function addGloss(gl, tone){
   for(const [a, b] of gl){ if(!keys.has(a.toLowerCase())){ keys.add(a.toLowerCase()); add.push(a + ' = ' + b); } }
   for(const [a, b] of tone){ const k = '말투: ' + a; if(!keys.has(k.toLowerCase())){ keys.add(k.toLowerCase()); add.push(k + ' = ' + b); } }
   if(!add.length) return;
-  bk.gloss = (bk.gloss.trim() ? bk.gloss.trim() + '\n' : '') + add.join('\n');
+  bk.gloss = (bk.gloss.trim() ? bk.gloss.trim() + '\n' : '') + add.join('\n'); bk.glossAt = Date.now();
   const ta = $('#trGl'); if(!$('#trDlg').hidden && document.activeElement !== ta) ta.value = bk.gloss;
 }
 
@@ -251,13 +227,12 @@ function counts(){
   return {all, done, pct: all ? Math.floor(done / all * 100) : 100};
 }
 let saveP = Promise.resolve();
+const touch = i => { bk.ts[i] = Date.now(); };
 function save(){
   if(!bk) return saveP;
   const rec = bk, c = counts();
-  rec.at = Date.now();
-  const data = {id: rec.id, name: rec.name, title: rec.title, author: rec.author, lang: rec.lang, trTitle: rec.trTitle, paras: rec.paras, tr: rec.tr, ed: rec.ed, fail: rec.fail, tries: rec.tries, gloss: rec.gloss, all: !!rec.all, at: rec.at};
-  const meta = {id: rec.id, title: rec.title, trTitle: rec.trTitle, pct: c.pct, at: rec.at};
-  saveP = saveP.then(() => TDB.put(data, meta)).catch(e => { toast(e && e.name === 'QuotaExceededError' ? '기기 저장 공간이 부족해 번역을 보관하지 못했습니다' : '번역을 기기에 보관하지 못했습니다', 6000); });
+  const data = {id: rec.id, name: rec.name, title: rec.title, author: rec.author, lang: rec.lang, trTitle: rec.trTitle, paras: rec.paras, tr: rec.tr, ed: rec.ed, fail: rec.fail, tries: rec.tries, ts: rec.ts, gloss: rec.gloss, glossAt: rec.glossAt || 0, all: !!rec.all};
+  saveP = saveP.then(() => L.trSave(data, {pct: c.pct, chs: rec.chaps.length})).catch(e => { toast(e && e.name === 'QuotaExceededError' ? '기기 저장 공간이 부족해 번역을 보관하지 못했습니다' : '번역을 기기에 보관하지 못했습니다', 6000); });
   return saveP;
 }
 let saveT = null;
@@ -289,7 +264,7 @@ async function pump(){
     }
   }finally{
     tq.busy = false; tq.job = null; tq.ctl = null;
-    if(bk === me){ foot(); chapterList(); info(); endLabels(); renderRecent(); }
+    if(bk === me){ foot(); chapterList(); info(); endLabels(); }
     if(bk && (bk !== me || tq.again)){ tq.again = false; setTimeout(pump, 0); }   // 다른 책을 그사이 열었거나, 장을 옮겨 멈춘 경우
   }
 }
@@ -305,12 +280,12 @@ async function runJob(job, me){
   for(const [n, v] of p.out){
     if(!v || (!whole && n === p.last)) continue;   // 끊긴 답의 마지막 문단은 덜 왔을 수 있다
     const i = job.idx[n - 1]; if(bk.tr[i] != null) continue;
-    bk.tr[i] = v; delete bk.tries[i]; got++;
+    bk.tr[i] = v; delete bk.tries[i]; touch(i); got++;
   }
   if(p.title && !bk.trTitle){ bk.trTitle = p.title; head(); }
   addGloss(p.gl, p.tone);
   if(whole){   // 빠뜨린 문단: 두 번 빠지면 원문으로 둔다
-    for(let n = 1; n <= k; n++){ const i = job.idx[n - 1]; if(bk.tr[i] == null){ bk.tries[i] = (bk.tries[i] || 0) + 1; if(bk.tries[i] >= 2) bk.fail[i] = 1; } }
+    for(let n = 1; n <= k; n++){ const i = job.idx[n - 1]; if(bk.tr[i] == null){ bk.tries[i] = (bk.tries[i] || 0) + 1; if(bk.tries[i] >= 2){ bk.fail[i] = 1; touch(i); } } }
   }
   if(got || whole) save();
   paintJob(job);
@@ -324,7 +299,7 @@ async function runJob(job, me){
   if(c === 'cancelled') return false;
   if(c === 'refused' || c === 'prompt_too_large'){   // 반씩 나눠 다시. 한 문단만 남았는데도 안 되면 원문으로 둔다
     if(k > 1 && !got){ tq.limit = Math.max(1, Math.ceil(k / 2)); return true; }
-    if(!got){ bk.fail[job.idx[0]] = 1; save(); paintJob(job); }
+    if(!got){ bk.fail[job.idx[0]] = 1; touch(job.idx[0]); save(); paintJob(job); }
     tq.limit = 0; return true;
   }
   if((c === 'busy' || c === 'network' || c === 'timeout' || c === 'empty_completion') && got && ++tq.fails < 3) return true;
@@ -427,20 +402,39 @@ function foot(){
   if(c.done >= c.all){ st.textContent = '책 전체를 번역했습니다. 「원고로」를 누르면 편집할 수 있는 원고가 됩니다.'; return; }
   st.textContent = chapterLeft(view.ch) ? '' : '이 장은 번역을 마쳤습니다.';
 }
-function go(ch, y){
+function go(ch, pos){
   if(!bk) return;
   ch = Math.max(0, Math.min(bk.chaps.length - 1, ch));
   closeMsMenu();
+  const moved = ch !== view.ch || !els.size;
   view.ch = ch; render(); chapterList(); info();
-  scroller.scrollTop = y || 0;
-  lsSet('tr-pos-' + bk.id, {ch, y: y || 0});
+  scroller.scrollTop = 0;
+  if(pos) goPos(pos);
+  if(moved || pos) savePos();
   // 지금 돌고 있는 요청이 이 장이나 다음 장 것이 아니면 멈추고 이 장부터
   if(tq.busy && tq.job && tq.job.ch !== ch && tq.job.ch !== ch + 1 && !bk.all){ tq.again = true; if(tq.ctl) tq.ctl.abort(); }
   else pump();
   foot();
 }
+/* 읽던 자리: 기기마다 화면 폭·글자 크기가 달라도 같은 데로 가도록 '몇 번째 문단의 어디쯤'으로 적는다 */
+function posNow(){
+  if(!bk || !els.size) return null;
+  const secs = [...els.values()], top = scroller.getBoundingClientRect().top;
+  if(scroller.scrollTop < 20) return {ch: view.ch};
+  let lo = 0, hi = secs.length - 1;
+  while(lo < hi){ const m = (lo + hi + 1) >> 1; if(secs[m].getBoundingClientRect().top <= top + 2) lo = m; else hi = m - 1; }
+  const r = secs[lo].getBoundingClientRect();
+  return {ch: view.ch, p: +secs[lo].dataset.i, f: r.height ? Math.round(Math.max(0, Math.min(1, (top - r.top) / r.height)) * 1000) / 1000 : 0};
+}
+function goPos(pos){
+  if(pos.p == null){ if(pos.y) scroller.scrollTop = pos.y; return; }   // y: 옛 판(기기 안에서만)
+  const sec = els.get(pos.p); if(!sec) return;
+  const r = sec.getBoundingClientRect(), top = scroller.getBoundingClientRect().top;
+  scroller.scrollTop += r.top - top + (pos.f || 0) * r.height;
+}
+function savePos(){ if(!bk) return; const p = posNow(); if(p) L.setPos(bk.id, p, {pct: counts().pct}).catch(() => {}); }
 let posT = null;
-scroller.addEventListener('scroll', () => { if(!bk || posT) return; posT = setTimeout(() => { posT = null; if(bk) lsSet('tr-pos-' + bk.id, {ch: view.ch, y: Math.round(scroller.scrollTop)}); }, 400); });
+scroller.addEventListener('scroll', () => { if(!bk || posT) return; posT = setTimeout(() => { posT = null; savePos(); }, 700); });
 
 /* 글자 크기·보기 */
 const FS_MIN = 12, FS_MAX = 44;
@@ -479,7 +473,7 @@ doc.addEventListener('input', e => {
 });
 function flushEdits(){
   if(!bk || !edDirty.size) return;
-  for(const i of edDirty){ const sec = els.get(i), k = sec && sec.querySelector('.k'); if(!k) continue; bk.tr[i] = domToMarkup(k); bk.ed[i] = 1; delete bk.fail[i]; sec.classList.add('ed'); }
+  for(const i of edDirty){ const sec = els.get(i), k = sec && sec.querySelector('.k'); if(!k) continue; bk.tr[i] = domToMarkup(k); bk.ed[i] = 1; delete bk.fail[i]; touch(i); sec.classList.add('ed'); }
   edDirty.clear(); save();
 }
 doc.addEventListener('keydown', e => { if(e.key === 'Enter' && e.target.closest && e.target.closest('.k')) e.preventDefault(); });
@@ -546,11 +540,11 @@ function closeDlg(){ $('#trDlg').hidden = true; }
 $('#trGlBtn').onclick = openDlg;
 $('#trDlgClose').onclick = closeDlg;
 $('#trDlg').addEventListener('click', e => { if(e.target.id === 'trDlg') closeDlg(); });
-$('#trGl').addEventListener('input', () => { if(bk){ bk.gloss = $('#trGl').value; saveSoon(); } });
+$('#trGl').addEventListener('input', () => { if(bk){ bk.gloss = $('#trGl').value; bk.glossAt = Date.now(); saveSoon(); } });
 $('#trRedo').onclick = () => {
   if(!bk) return;
   const c = bk.chaps[view.ch]; let n = 0;
-  for(let i = c.a; i < c.b; i++){ if(bk.ed[i] || bk.paras[i].s) continue; if(bk.tr[i] != null || bk.fail[i]) n++; delete bk.tr[i]; delete bk.fail[i]; delete bk.tries[i]; }
+  for(let i = c.a; i < c.b; i++){ if(bk.ed[i] || bk.paras[i].s) continue; if(bk.tr[i] != null || bk.fail[i]){ n++; touch(i); } delete bk.tr[i]; delete bk.fail[i]; delete bk.tries[i]; }
   save(); closeDlg();
   if(tq.busy && tq.job && tq.job.ch === view.ch){ tq.again = true; if(tq.ctl) tq.ctl.abort(); }
   render(); chapterList(); info(); tq.stopped = false; tq.err = null; pump();
@@ -563,9 +557,8 @@ $('#trForget').onclick = async () => {
   b.dataset.sure = ''; b.textContent = '이 기기에 보관한 이 책과 번역 지우기';
   const id = bk.id, t = bk.title;
   closeDlg(); close(true);
-  try{ await saveP; await TDB.del(id); }catch(e){}
-  lsDel('tr-pos-' + id);
-  renderRecent(); toast('「' + t + '」의 번역 기록을 지웠습니다', 4000);
+  try{ await saveP; await L.forget(id); }catch(e){}
+  toast('「' + t + '」의 번역 기록을 지웠습니다', 4000);
 };
 
 /* 설정(lightning) 창을 번역 화면 위로 */
@@ -598,15 +591,30 @@ function shell(name){
   reader.hidden = false; scroller.scrollTop = 0; scroller.focus({preventScroll: true});
   if(narrow()) $('#app').classList.remove('drawer');
 }
-function start(rec){
+/* 다른 기기가 같은 책에 더한 번역을 지금 화면의 기록에 합친다(library.js가 부른다) */
+function mergeOpen(remote){
+  if(!bk || !remote || remote.id !== bk.id) return false;
+  flushEdits();
+  const m = L.mergeTr(bk, remote);
+  for(const k of ['tr', 'ed', 'fail', 'ts', 'gloss', 'glossAt', 'trTitle']) bk[k] = m[k];
+  const act = document.activeElement;
+  for(const [i, sec] of els) if(!(view.edit && act && sec.contains(act))) paint(i);
+  if(!$('#trDlg').hidden && act !== $('#trGl')) $('#trGl').value = bk.gloss;
+  head(); chapterList(); info(); endLabels(); foot();
+  save();
+  return true;
+}
+function start(rec, pos){
   bk = rec;
-  for(const k of ['tr', 'ed', 'fail', 'tries']) if(!bk[k] || typeof bk[k] !== 'object') bk[k] = {};
+  for(const k of ['tr', 'ed', 'fail', 'tries', 'ts']) if(!bk[k] || typeof bk[k] !== 'object') bk[k] = {};
   bk.gloss = bk.gloss || ''; bk.trTitle = bk.trTitle || '';
   bk.chaps = chaptersOf(bk.paras);
   Object.assign(tq, {stopped: false, err: null, limit: 0, fails: 0, again: false, calls: 0});
-  const pos = lsGet('tr-pos-' + bk.id) || {};
+  pos = pos || lsGet('tr-pos-' + bk.id) || {};   // tr-pos-: 옛 판이 이 기기에 적어 둔 자리
+  L.live = {id: bk.id, merge: mergeOpen, gone(){ close(true); toast('다른 기기에서 이 책을 서재에서 지웠습니다', 5000); }};
   head();
-  go(Number.isInteger(pos.ch) ? pos.ch : 0, pos.y || 0);
+  els = new Map(); view.ch = -1;
+  go(Number.isInteger(pos.ch) ? pos.ch : 0, pos);
   save();
 }
 async function openFile(f){
@@ -615,9 +623,9 @@ async function openFile(f){
     const src = await loadSource(f);
     if(!src.paras.some(p => !p.s && p.m.trim())) throw new Error('empty');
     const id = await hashOf(src);
-    let rec = null; try{ rec = await TDB.get(id); }catch(e){}
+    const rec = await L.trGet(id), m = await L.meta(id);
     if(reader.hidden) return;
-    start(rec || Object.assign(src, {id, name: f.name, trTitle: '', tr: {}, ed: {}, fail: {}, tries: {}, gloss: '', all: false}));
+    start(rec || Object.assign(src, {id, name: f.name, trTitle: '', tr: {}, ed: {}, fail: {}, tries: {}, ts: {}, gloss: '', glossAt: 0, all: false}), m && m.pos);
     if(rec) toast('번역해 둔 데서 이어 갑니다 · ' + counts().pct + '%', 3000);
   }catch(e){
     if(reader.hidden) return;
@@ -627,51 +635,33 @@ async function openFile(f){
 }
 async function openSaved(id){
   shell('…');
-  let rec = null; try{ rec = await TDB.get(id); }catch(e){}
+  let rec = await L.trGet(id), err = null;
+  if(!rec){
+    doc.innerHTML = '<p class="rd-wait">드라이브에서 받는 중…</p>';
+    try{ rec = await L.trFetch(id); }catch(e){ err = e; }
+  }
   if(reader.hidden) return;
-  if(!rec){ doc.innerHTML = '<p class="rd-wait">이 책의 번역 기록을 찾지 못했습니다.</p>'; renderRecent(); return; }
-  start(rec);
+  if(!rec){
+    doc.innerHTML = '<p class="rd-wait"></p>';
+    doc.firstChild.textContent = err && err.code === 'network' ? '인터넷에 연결된 뒤 드라이브에서 받을 수 있습니다.' : err && err.code === 'auth' ? '드라이브 연결이 만료되었습니다. 원고 목록 아래 「다시 연결」을 누른 뒤 다시 열어 주세요.' : '이 책의 번역 기록을 찾지 못했습니다.';
+    return;
+  }
+  const m = await L.meta(id);
+  start(rec, m && m.pos);
 }
 function close(quiet){
   if(reader.hidden) return;
-  flushEdits(); clearTimeout(saveT);
-  if(bk){ lsSet('tr-pos-' + bk.id, {ch: view.ch, y: Math.round(scroller.scrollTop)}); if(!quiet) save(); }
+  flushEdits(); clearTimeout(saveT); clearTimeout(posT); posT = null;
+  if(bk){ savePos(); if(!quiet) save(); }
   if(tq.ctl) tq.ctl.abort();
-  bk = null; els = new Map(); doc.textContent = '';
+  bk = null; els = new Map(); doc.textContent = ''; L.live = null;
   closeMsMenu(); closeDlg(); reader.hidden = true; reader.classList.remove('under');
-  renderRecent();
+  saveP.then(() => { L.soon(1500); L.render(); });
   if(!narrow()) $('#paper').focus({preventScroll: true});
 }
 $('#trClose').onclick = () => close();
 $('#trIn').onchange = () => { const f = $('#trIn').files[0]; $('#trIn').value = ''; if(f) openFile(f); };
 $('#trBtn').addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('#trIn').click(); } });
-
-/* 불러오기 메뉴의 「이어 읽기」: 최근 책 세 권 */
-async function renderRecent(){
-  const box = $('#trRecent'); if(!box) return;
-  let ms = []; try{ ms = await TDB.metas(); }catch(e){}
-  ms.sort((a, b) => (b.at || 0) - (a.at || 0));
-  box.textContent = '';
-  for(const m of ms.slice(0, 3)){
-    const row = document.createElement('div'); row.className = 'tr-rc';
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'mi'; b.setAttribute('role', 'menuitem');
-    const d = new Date(m.at || 0);
-    b.innerHTML = '<b></b> 이어 읽기<small></small>';
-    b.firstChild.textContent = '「' + (m.trTitle || m.title) + '」';
-    b.lastChild.textContent = '번역 ' + (m.pct || 0) + '%' + (m.trTitle ? ' · ' + m.title : '') + ' · ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
-    b.onclick = () => openSaved(m.id);
-    const x = document.createElement('button'); x.type = 'button'; x.className = 'tr-x'; x.textContent = '✕';
-    x.title = '이 책의 번역 기록 지우기'; x.setAttribute('aria-label', '「' + (m.trTitle || m.title) + '」 번역 기록 지우기');
-    x.onclick = async e => {
-      e.stopPropagation();
-      if(x.dataset.sure !== '1'){ x.dataset.sure = '1'; x.textContent = '지우기'; setTimeout(() => { x.dataset.sure = ''; x.textContent = '✕'; }, 4000); return; }
-      try{ await TDB.del(m.id); }catch(err){}
-      lsDel('tr-pos-' + m.id); renderRecent();
-    };
-    row.append(b, x); box.appendChild(row);
-  }
-}
-renderRecent();
 
 /* ================= 키 ================= */
 window.addEventListener('keydown', e => {
@@ -693,7 +683,7 @@ window.addEventListener('keydown', e => {
     else if(e.key === 'ArrowRight' && bk && view.ch + 1 < bk.chaps.length){ e.preventDefault(); go(view.ch + 1); }
   }
 }, true);
-window.addEventListener('pagehide', () => { if(bk){ flushEdits(); lsSet('tr-pos-' + bk.id, {ch: view.ch, y: Math.round(scroller.scrollTop)}); } });
+window.addEventListener('pagehide', () => { if(bk){ flushEdits(); savePos(); } });
 
-window.__tr = {openFile, openSaved, close, _: {toMarkup, fromMarkup, domToMarkup, txtBook, chaptersOf, parseOut, buildPrompt: j => buildPrompt(j), chunkOf: (c, l) => chunkOf(c, l), state: () => ({bk, view, tq}), TDB}};
+window.__tr = {openFile, openSaved, close, _: {toMarkup, fromMarkup, domToMarkup, txtBook, chaptersOf, parseOut, buildPrompt: j => buildPrompt(j), chunkOf: (c, l) => chunkOf(c, l), state: () => ({bk, view, tq}), posNow}};
 })();

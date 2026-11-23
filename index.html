@@ -402,9 +402,14 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .tl-meta button{font-size:12px;padding:2px 8px;color:var(--muted)}
 /* ---------- 번역 모드 (translate.js) ---------- */
 #openPop{max-height:calc(100dvh - 90px);overflow:auto}
-.tr-rc{display:flex;align-items:center;gap:2px}
-.tr-rc .mi{flex:1;min-width:0}
-.tr-rc .mi b{font-weight:500}
+.lib-row{display:flex;align-items:center;gap:2px}
+.lib-row .mi{flex:1;min-width:0}
+.lib-row .mi b{font-weight:500}
+.lib-k{display:inline-block;font-size:10.5px;line-height:1;padding:3px 6px 2px;margin-right:6px;border-radius:8px;border:1px solid var(--accent);color:var(--accent);vertical-align:2px}
+#libList .lib-row{border-bottom:1px solid var(--line)}
+#libList .lib-row .mi{padding:10px 8px}
+#libList .hint{text-align:left}
+#libState{font-size:12.5px;margin-bottom:8px}
 .tr-x{flex:none;border:0;background:transparent;color:var(--muted);padding:6px 9px;border-radius:6px;font-size:13px;cursor:pointer}
 .tr-x:hover{background:var(--hover);color:var(--ink)}
 #trReader{position:fixed;inset:0;z-index:60;background:var(--paper);color:var(--ink);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -605,11 +610,17 @@ button.danger:disabled{opacity:.4}
     <button class="mi" role="menuitemradio" data-mode="prose">산문<small>메일·메모·칼럼을 글을 보고 알아서 구분</small></button>
   </div>
   <div id="openPop" class="pop menu" role="menu" hidden>
+    <div id="libBox" hidden>
+      <div class="mh">이어 읽기<small>읽기·번역 모드로 연 문서. 드라이브에 연결하면 다른 기기에서도 읽던 자리부터</small></div>
+      <div id="libRecent"></div>
+      <button id="libAll" class="mi lib-all" type="button" role="menuitem">서재 전체 보기<small></small></button>
+      <hr>
+    </div>
     <div class="mh">편집 모드<small>원고로 불러와 고칩니다</small></div>
     <label id="importBtn" for="fileIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·TXT·EPUB, 원고 백업(.json)</small></label>
     <button id="opDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>HWP·HWPX·TXT·EPUB, 원고 백업(.json)</small></button>
     <hr>
-    <div class="mh">읽기 모드<small>보기만 하고 저장하지 않습니다</small></div>
+    <div class="mh">읽기 모드<small>보기만 합니다. 읽던 자리를 기억해 「이어 읽기」에 둡니다</small></div>
     <label id="readBtn" for="readIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·DOCX·TXT·PDF·EPUB</small></label>
     <button id="readDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>위 형식과 구글 문서</small></button>
     <hr>
@@ -618,7 +629,6 @@ button.danger:disabled{opacity:.4}
     <button id="convDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>위 형식과 구글 문서</small></button>
     <hr>
     <div class="mh">번역 모드<small>외국어 책을 장마다 한국어로 옮기며 읽고 고칩니다</small></div>
-    <div id="trRecent"></div>
     <label id="trBtn" for="trIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>EPUB·TXT·DOCX (구텐베르크 책 등)</small></label>
     <button id="trDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>EPUB·TXT·DOCX와 구글 문서</small></button>
   </div>
@@ -866,6 +876,17 @@ button.danger:disabled{opacity:.4}
   </div>
 </div>
 
+<div id="libDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="libDlgH">
+  <div class="sheet-box">
+    <header class="sheet-head"><h2 id="libDlgH">서재</h2><button id="libClose" class="ghost" type="button">닫기</button></header>
+    <div class="sheet-body ai-body">
+      <p class="hint">읽기 모드와 번역 모드로 연 문서입니다. 누르면 읽던 자리부터 엽니다. 드라이브에 연결해 두면 'LWRITE/서재' 폴더에 한 부씩 올라가, 다른 기기에서도 같은 자리부터 이어 읽습니다. ✕를 두 번 누르면 이 기기와 드라이브에서 지웁니다(드라이브 휴지통에서 30일 동안 되살릴 수 있음).</p>
+      <p id="libState" class="hint ai-state"></p>
+      <div id="libList"></div>
+    </div>
+  </div>
+</div>
+
 <div id="epubDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="epTitleH">
   <div class="sheet-box">
     <header class="sheet-head"><h2 id="epTitleH">전자책(EPUB) 만들기</h2><button id="epClose" class="ghost" type="button">닫기</button></header>
@@ -911,6 +932,7 @@ button.danger:disabled{opacity:.4}
 <script src="app.js"></script>
 <script src="lightning.js"></script>
 <script src="pdfout.js"></script>
+<script src="library.js"></script>
 <script src="books.js"></script>
 <script src="translate.js"></script>
 </body>

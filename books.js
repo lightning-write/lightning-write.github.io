@@ -1,5 +1,6 @@
 /* 라이트닝 라이트 — 읽기 모드 · EPUB 만들기 · EPUB을 원고로 · PDF(인쇄)
-   읽기 모드: HWP·HWPX·DOCX·TXT·PDF·EPUB을 열어 보기만 한다. 기기에도 드라이브에도 저장하지 않고, 닫으면 사라진다.
+   읽기 모드: HWP·HWPX·DOCX·TXT·PDF·EPUB을 열어 보기만 한다. 연 파일과 읽던 자리는 서재(library.js)에 두어
+   「이어 읽기」로 다시 열고, 드라이브에 연결돼 있으면 다른 기기에서도 같은 자리부터 읽는다.
    EPUB → 원고: 변환 모드(또는 편집 모드)에서 EPUB을 고르면 장 제목·별표·기울임·굵게를 살린 원고로 연다. epubBook은 번역 모드(translate.js)도 쓴다.
    EPUB: 크레마샤인(흑백 전자잉크)용 조판. 본문은 한 글자도 고치지 않는다. 표지는 제목·작가 이름으로 그린다.
    PDF: 본문 서식 그대로 인쇄 창을 띄운다('PDF로 저장'). */
@@ -112,9 +113,10 @@ async function readTextDoc(f){
 }
 
 /* ================= 읽기 모드 ================= */
-const rd = {el: $('#reader'), doc: $('#rdDoc'), scroll: $('#rdScroll'), urls: [], pdf: null, obs: null, token: 0};
+const rd = {el: $('#reader'), doc: $('#rdDoc'), scroll: $('#rdScroll'), urls: [], pdf: null, obs: null, token: 0, libId: null, anchors: null, pages: 0, moved: false};
 function rdReset(){
   rd.token++;
+  clearTimeout(rdPosT); rdPosT = null; rd.libId = null; rd.anchors = null; rd.pages = 0; rd.moved = false;
   if(rd.obs){ rd.obs.disconnect(); rd.obs = null; }
   if(rd.pdf){ try{ rd.pdf.destroy(); }catch(e){} rd.pdf = null; }
   rd.urls.forEach(u => URL.revokeObjectURL(u)); rd.urls = [];
@@ -127,7 +129,59 @@ const rdFsNow = () => { const v = Number(lsGet('rd-fs')); return v >= RD_MIN && 
 function rdFs(v){ v = Math.max(RD_MIN, Math.min(RD_MAX, Math.round(v))); rd.doc.style.setProperty('--fs', v + 'px'); $('#rdSm').disabled = v <= RD_MIN; $('#rdLg').disabled = v >= RD_MAX; return v; }
 function rdStep(d){ const v = rdFs(rdFsNow() + d); lsSet('rd-fs', v); toast('글자 크기 ' + v, 1200); }
 $('#rdSm').onclick = () => rdStep(-1); $('#rdLg').onclick = () => rdStep(1);
-function rdClose(){ rdReset(); rd.el.hidden = true; if(!narrow()) paper.focus({preventScroll: true}); }
+function rdClose(){
+  if(rd.libId){ rdSavePos(); const L = window.__lib; if(L) setTimeout(() => L.soon(1500), 300); }
+  rdReset(); rd.el.hidden = true; if(!narrow()) paper.focus({preventScroll: true});
+}
+/* ---- 읽던 자리: 기기마다 화면 폭·글자 크기가 달라도 같은 데로 가도록 '몇 번째 문단의 어디쯤', PDF는 '몇 쪽의 어디쯤'으로 적는다 ---- */
+const ANCH = 'p,h1,h2,h3,h4,h5,h6,li,pre,dt,dd,td,th,figcaption,img';
+let rdPosT = null;
+function rdMarks(){ return rd.pdf ? [...rd.doc.querySelectorAll('.pdf-page')] : (rd.anchors || (rd.anchors = [...rd.doc.querySelectorAll(ANCH)])); }
+function rdPosNow(){
+  const ms = rdMarks(); if(!ms.length) return null;
+  const top = rd.scroll.getBoundingClientRect().top;
+  let lo = 0, hi = ms.length - 1;
+  while(lo < hi){ const m = (lo + hi + 1) >> 1; if(ms[m].getBoundingClientRect().top <= top + 2) lo = m; else hi = m - 1; }
+  const r = ms[lo].getBoundingClientRect(), f = r.height ? Math.round(Math.max(0, Math.min(1, (top - r.top) / r.height)) * 1000) / 1000 : 0;
+  if(rd.pdf) return {pos: {pg: lo + 1, f}, pct: Math.round((lo + 1) / ms.length * 100), pages: ms.length};
+  if(rd.scroll.scrollTop < 20) return {pos: {a: -1}, pct: 0};
+  return {pos: {a: lo, f}, pct: Math.round(lo / ms.length * 100)};
+}
+function rdGoPos(p){
+  if(!p) return false;
+  if(p.a === -1){ rd.scroll.scrollTop = 0; return false; }
+  const ms = rdMarks(), el = ms[rd.pdf ? (p.pg || 1) - 1 : p.a];
+  if(!el) return false;
+  const r = el.getBoundingClientRect(), top = rd.scroll.getBoundingClientRect().top;
+  rd.scroll.scrollTop += r.top - top + (p.f || 0) * r.height;
+  return true;
+}
+function rdSavePos(){
+  const L = window.__lib, id = rd.libId; if(!L || !id) return;
+  const p = rdPosNow(); if(!p) return;
+  L.setPos(id, p.pos, Object.assign({pct: p.pct}, p.pages ? {pages: p.pages} : {})).catch(() => {});
+}
+rd.scroll.addEventListener('scroll', () => { if(!rd.libId || rdPosT) return; rdPosT = setTimeout(() => { rdPosT = null; rdSavePos(); }, 700); });
+for(const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) rd.scroll.addEventListener(ev, () => { rd.moved = true; }, {passive: true});
+/* 서재에 두고, 읽던 자리가 있으면 그리로 간다. 그림이 늦게 들어와 자리가 밀리면 손대기 전까지 한 번 더 맞춘다 */
+async function rdRemember(f, token, info){
+  const L = window.__lib; if(!L) return;
+  try{
+    const id = await L.rememberRd(f, info);
+    if(rd.token !== token) return;
+    rd.libId = id;
+    const m = await L.meta(id);
+    if(rd.token !== token) return;
+    if(m && m.pos && !rd.moved && rdGoPos(m.pos)){
+      toast(rd.pdf ? '읽던 자리(' + (m.pos.pg || 1) + '쪽)에서 이어 읽습니다' : '읽던 자리에서 이어 읽습니다', 2500);
+      const imgs = [...rd.doc.querySelectorAll('img')].filter(i => !i.complete);
+      if(imgs.length){
+        await Promise.race([Promise.all(imgs.map(i => new Promise(r => { i.addEventListener('load', r, {once: true}); i.addEventListener('error', r, {once: true}); }))), new Promise(r => setTimeout(r, 4000))]);
+        if(rd.token === token && !rd.moved){ rd.anchors = null; rdGoPos(m.pos); }
+      }
+    } else rdSavePos();
+  }catch(e){}
+}
 $('#rdClose').onclick = rdClose;
 function rdOpen(name){
   rdReset(); W.closePops(); $('#toast').hidden = true;
@@ -201,7 +255,7 @@ const spineDoc = (XP, text) => {
   return d.getElementsByTagNameNS('*', 'body')[0] || d.documentElement;
 };
 async function rdEpub(f, token){
-  const {z, XP, spine} = await epubPkg(f);
+  const {z, XP, spine, title} = await epubPkg(f);
   const blobUrl = new Map();
   async function img(path){
     if(!path) return null;
@@ -247,6 +301,7 @@ async function rdEpub(f, token){
   }
   if(!parts) throw new Error('empty');
   rd.doc.textContent = ''; rd.doc.classList.add('indent'); rd.doc.appendChild(frag);
+  return title;
 }
 /* ---- EPUB → 문단 모델: 원고로 바꾸기·번역 모드가 쓴다 ----
    차례 순서대로 글만 문단으로 옮긴다. 제목 태그(h1~h6)는 장 제목(chap), <hr>는 별표 줄(sep), 그림·표 모양·스타일은 버린다.
@@ -401,22 +456,27 @@ async function rdPdf(f, token){
   let t = null; rd.scroll.onscroll = () => { if(t) return; t = setTimeout(() => { t = null; info(); }, 120); };
   info();
 }
-async function readFile(f, shown){
+async function readFile(f, shown, opt){
+  opt = opt || {};
   const token = rdOpen(shown || f.name);
+  let kind = '', title = stemOf(shown || f.name);
   try{
-    const kind = await sniff(f), ext = extOf(f.name);
-    if(kind === 'pdf') await rdPdf(f, token);
-    else if(kind === 'zip' && (ext === 'epub' || await isEpub(f))) await rdEpub(f, token);
+    const k = await sniff(f), ext = extOf(f.name);
+    if(k === 'pdf'){ kind = 'pdf'; await rdPdf(f, token); }
+    else if(k === 'zip' && (ext === 'epub' || await isEpub(f))){ kind = 'epub'; const t = await rdEpub(f, token); if(t) title = t; }
     else {
       const paras = await readTextDoc(f);
       if(rd.token !== token) return;
       if(!paras.some(p => paraText(p).trim())) throw new Error('empty');
+      kind = ext && ext.length <= 5 ? ext : 'txt';
       rdText(paras);
     }
   }catch(e){
     if(rd.token !== token) return;
     rd.doc.innerHTML = '<p class="rd-wait"></p>'; rd.doc.firstChild.textContent = errText(e);
+    return;
   }
+  if(rd.token === token) await rdRemember(f, token, {id: opt.libId, title, kind});
 }
 async function isEpub(f){
   try{ const z = await Hangul.unzip(await f.arrayBuffer()); const m = await z.text('mimetype'); return !!m && m.trim() === 'application/epub+zip'; }catch(e){ return false; }
