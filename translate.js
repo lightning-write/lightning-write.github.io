@@ -98,7 +98,10 @@ function txtBook(text, name){
 }
 async function loadSource(f){
   const kind = await B.sniff(f);
-  if(kind === 'pdf') throw new Error('tr_pdf');
+  if(kind === 'pdf'){   // 글이 들어 있는 PDF: 글을 뽑아 문단으로(books.js)
+    const bk = await B.pdfBook(f);
+    return {title: bk.title, author: '', lang: 'en', paras: bk.paras.map(p => { const t = B.paraText(p).trim(); return p.sep || isSepText(t) ? {m: '* * *', c: 0, s: 1} : {m: toMarkup(p.runs), c: p.chap || headish(t) ? 1 : 0, s: 0}; }).filter(p => p.s || p.m)};
+  }
   if(kind === 'zip' && await B.isEpubFile(f)){
     const bk = await B.epubBook(f);
     const paras = bk.paras.filter(p => !p.pg).map(p => ({m: p.sep ? '* * *' : toMarkup(p.runs), c: p.chap ? 1 : 0, s: p.sep ? 1 : 0})).filter(p => p.s || p.m);
@@ -629,7 +632,7 @@ async function openFile(f){
     if(rec) toast('번역해 둔 데서 이어 갑니다 · ' + counts().pct + '%', 3000);
   }catch(e){
     if(reader.hidden) return;
-    const msg = e && e.message === 'tr_pdf' ? 'PDF는 번역 모드에서 열 수 없습니다. EPUB이나 TXT를 받아 열어 주세요(구텐베르크는 두 형식 모두 있습니다).' : B.errText(e);
+    const msg = B.errText(e);
     doc.innerHTML = '<p class="rd-wait"></p>'; doc.firstChild.textContent = msg;
   }
 }

@@ -608,21 +608,21 @@ button.danger:disabled{opacity:.4}
   </div>
   <div id="openPop" class="pop menu" role="menu" hidden>
     <div class="mh">편집 모드<small>원고를 불러와 고칩니다</small></div>
-    <label id="importBtn" for="fileIn" class="mi" role="menuitem" tabindex="0" title="HWP·HWPX·TXT·EPUB, 원고 백업(.json)">이 기기에서</label>
-    <button id="opDrive" class="mi" role="menuitem" title="HWP·HWPX·TXT·EPUB, 원고 백업(.json)">드라이브에서</button>
+    <label id="importBtn" for="fileIn" class="mi" role="menuitem" tabindex="0" title="HWP·HWPX·TXT·EPUB·PDF, 원고 백업(.json)">이 기기에서</label>
+    <button id="opDrive" class="mi" role="menuitem" title="HWP·HWPX·TXT·EPUB·PDF, 원고 백업(.json)">드라이브에서</button>
     <hr>
     <div class="mh">읽기 모드<small>보기만 합니다. 읽던 자리를 기억합니다</small></div>
     <label id="readBtn" for="readIn" class="mi" role="menuitem" tabindex="0" title="HWP·HWPX·DOCX·TXT·PDF·EPUB">이 기기에서</label>
     <button id="readDrive" class="mi" role="menuitem" title="HWP·HWPX·DOCX·TXT·PDF·EPUB와 구글 문서">드라이브에서</button>
     <div id="libRd" class="lib-rc"></div>
     <hr>
-    <div class="mh">변환 모드<small>문서 → 전자책(EPUB) · 전자책 → 편집 가능 문서</small></div>
-    <label id="convBtn" for="convIn" class="mi" role="menuitem" tabindex="0" title="HWP·HWPX·DOCX·TXT는 EPUB으로, EPUB은 편집 가능 문서로. 여러 파일도 한꺼번에">이 기기에서</label>
-    <button id="convDrive" class="mi" role="menuitem" title="HWP·HWPX·DOCX·TXT·EPUB와 구글 문서">드라이브에서</button>
+    <div class="mh">변환 모드<small>문서 → 전자책(EPUB) · EPUB·PDF → 편집 가능 문서</small></div>
+    <label id="convBtn" for="convIn" class="mi" role="menuitem" tabindex="0" title="HWP·HWPX·DOCX·TXT는 EPUB으로, EPUB·PDF는 편집 가능 문서로. 여러 파일도 한꺼번에">이 기기에서</label>
+    <button id="convDrive" class="mi" role="menuitem" title="HWP·HWPX·DOCX·TXT·EPUB·PDF와 구글 문서">드라이브에서</button>
     <hr>
     <div class="mh">번역 모드<small>외국어 책을 장마다 한국어로 옮기며 읽고 고칩니다</small></div>
-    <label id="trBtn" for="trIn" class="mi" role="menuitem" tabindex="0" title="EPUB·TXT·DOCX">이 기기에서</label>
-    <button id="trDrive" class="mi" role="menuitem" title="EPUB·TXT·DOCX와 구글 문서">드라이브에서</button>
+    <label id="trBtn" for="trIn" class="mi" role="menuitem" tabindex="0" title="EPUB·PDF·TXT·DOCX">이 기기에서</label>
+    <button id="trDrive" class="mi" role="menuitem" title="EPUB·PDF·TXT·DOCX와 구글 문서">드라이브에서</button>
     <div id="libTr" class="lib-rc"></div>
   </div>
 
@@ -903,8 +903,8 @@ button.danger:disabled{opacity:.4}
 <div id="toast" role="status" hidden></div>
   <input id="fileIn" type="file" class="vh" tabindex="-1" aria-hidden="true">
   <input id="readIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept=".hwp,.hwpx,.docx,.txt,.pdf,.epub,application/pdf,application/epub+zip,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-  <input id="convIn" type="file" class="vh" tabindex="-1" aria-hidden="true" multiple accept=".hwp,.hwpx,.docx,.txt,.epub,text/plain,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-  <input id="trIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept=".epub,.txt,.docx,.hwp,.hwpx,application/epub+zip,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+  <input id="convIn" type="file" class="vh" tabindex="-1" aria-hidden="true" multiple accept=".hwp,.hwpx,.docx,.txt,.epub,.pdf,text/plain,application/epub+zip,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+  <input id="trIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept=".epub,.pdf,.txt,.docx,.hwp,.hwpx,application/epub+zip,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
   <input id="coverIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept="image/*">
 </div>
 <script src="config.js"></script>

@@ -28,6 +28,7 @@ const ERR = Object.assign({}, W.importErrors, {
   epub_bad: '전자책 파일을 읽지 못했습니다',
   pdf_password: '암호가 걸린 PDF는 열 수 없습니다',
   pdf_bad: 'PDF 파일을 읽지 못했습니다',
+  pdf_scan: '글자가 들어 있지 않은 PDF(스캔한 그림)라 글을 뽑을 수 없습니다',
   pdf_lib: 'PDF를 읽는 부품을 받지 못했습니다. 인터넷에 연결한 뒤 한 번 열면 그 뒤로는 오프라인에서도 됩니다',
   unsupported: '이 형식은 열 수 없습니다',
   empty: '문서에 글이 없습니다'
@@ -118,7 +119,7 @@ function rdReset(){
   rd.token++;
   clearTimeout(rdPosT); rdPosT = null; rd.libId = null; rd.anchors = null; rd.pages = 0; rd.moved = false;
   if(rd.obs){ rd.obs.disconnect(); rd.obs = null; }
-  if(rd.pdf){ try{ rd.pdf.destroy(); }catch(e){} rd.pdf = null; }
+  if(rd.pdf){ pdfFree(rd.pdf); rd.pdf = null; }
   rd.urls.forEach(u => URL.revokeObjectURL(u)); rd.urls = [];
   rd.doc.textContent = ''; rd.doc.className = '';
   rd.scroll.onscroll = null; $('#rdInfo').textContent = '';
@@ -376,31 +377,146 @@ async function isEpubFile(f){
   const kind = await sniff(f);
   return kind === 'zip' && (extOf(f.name) === 'epub' || await isEpub(f));
 }
-/* EPUB → 편집할 수 있는 원고. 책의 글은 그대로 옮기고(장 제목·별표·기울임·굵게 포함), 원고 목록에 새로 만든다 */
+/* 편집 가능 문서로 바꿀 책: EPUB과 PDF */
+async function isBookFile(f){ return (await sniff(f)) === 'pdf' || await isEpubFile(f); }
+
+/* ---- PDF → 문단 모델: 글이 들어 있는 PDF에서 글을 뽑아 문단을 다시 세운다(편집 가능 문서·번역 모드) ----
+   같은 높이의 글 조각을 한 줄로 모으고, 줄을 문단으로 잇는다. 새 문단: 줄 간격이 벌어짐 · 들여 쓴 줄 · 앞줄이 짧게 끝남.
+   쪽마다 같은 자리에 되풀이되는 머리글·꼬리글과 쪽 번호는 뺀다. 본문보다 15% 넘게 큰 짧은 줄은 장 제목.
+   줄을 이을 때: 영어 줄 끝 하이픈은 붙이고, 한글은 문서 전체의 줄 끝 글자를 보고 어절에서 끊긴 문서(띄어 이음)인지
+   글자에서 끊긴 문서(붙여 이음)인지 가린다. 굵게·기울임은 살리지 못한다. 스캔한 PDF는 글이 없어 pdf_scan. */
+const HANGUL = /[\uAC00-\uD7A3]/;
+const WORD_END = new Set('다고를을은는이가의에서도로며면지게만와과요네니까죠야해던한할된될인들께며나라랑데듯처럼고요라서여'.split(''));
+// 글자에서 끊긴 문서라도 줄 끝이 이 조사·어미면 낱말이 끝난 자리로 보고 띄어 잇는다(PDF에 띄어쓰기가 안 남은 줄바꿈)
+const SURE_END = new Set('는를을은의에로와과도께며면듯서고'.split(''));
+function pdfLines(items){
+  const lines = []; let cur = null;
+  const push = () => {
+    if(!cur) return;
+    const raw = cur.text, text = raw.replace(/\s+/g, ' ').trim();
+    if(text) lines.push({x: cur.x, y: cur.y, end: cur.end, size: cur.n ? cur.sz / cur.n : cur.size, text, sp: /\s$/.test(raw)});
+    cur = null;
+  };
+  for(const it of items){
+    if(typeof it.str !== 'string') continue;
+    const t = it.transform, x = t[4], y = t[5], size = Math.hypot(t[2], t[3]) || it.height || 10;
+    if(it.str){
+      if(cur && Math.abs(y - cur.y) > Math.max(size, cur.size) * 0.5) push();
+      if(!cur) cur = {x, y, end: x, size, text: '', sz: 0, n: 0};
+      else {
+        const gap = x - cur.end;
+        if(gap > size * 0.2 && !/\s$/.test(cur.text) && !/^\s/.test(it.str)) cur.text += ' ';
+        if(x < cur.x) cur.x = x;
+      }
+      cur.text += it.str; cur.end = Math.max(cur.end, x + (it.width || 0));
+      const len = it.str.trim().length; cur.sz += size * len; cur.n += len;
+    }
+    if(it.hasEOL) push();
+  }
+  push();
+  return lines;
+}
+const median = a => { if(!a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; };
+const PAGE_NO = /^[\s\-–—·|()[\]]*(\d{1,4}|[ivxlcdm]{1,7})[\s\-–—·|()[\]]*$/i;
+async function pdfBook(f, onProgress){
+  const {lib, at} = await loadPdfLib();
+  let pdf;
+  try{ pdf = await lib.getDocument({data: new Uint8Array(await f.arrayBuffer()), cMapUrl: at('cmaps/'), cMapPacked: true, standardFontDataUrl: at('standard_fonts/'), wasmUrl: at('wasm/')}).promise; }
+  catch(e){ throw new Error(e && e.name === 'PasswordException' ? 'pdf_password' : 'pdf_bad'); }
+  let title = '', pages = [];
+  try{
+    try{ const md = await pdf.getMetadata(); title = String((md && md.info && md.info.Title) || '').trim(); }catch(e){}
+    for(let i = 1; i <= pdf.numPages; i++){
+      const page = await pdf.getPage(i), tc = await page.getTextContent();
+      pages.push(pdfLines(tc.items).sort((a, b) => b.y - a.y || a.x - b.x));
+      page.cleanup();
+      if(onProgress) onProgress(i, pdf.numPages);
+    }
+  }finally{ pdfFree(pdf); }
+  const chars = pages.reduce((s, ls) => s + ls.reduce((t, l) => t + l.text.length, 0), 0);
+  if(chars < Math.max(20, pages.length * 15)) throw new Error('pdf_scan');
+  // 머리글·꼬리글: 쪽의 맨 위·맨 아래 두 줄 가운데 여러 쪽에 되풀이되는 것(숫자는 빼고 견줌)과 쪽 번호만 있는 줄
+  const key = l => l.text.replace(/\d+/g, '#').replace(/\s+/g, '');
+  const edge = ls => new Set([0, 1, ls.length - 2, ls.length - 1].filter(k => k >= 0 && k < ls.length));
+  const cnt = new Map();
+  pages.forEach(ls => { const seen = new Set(); for(const k of edge(ls)){ const kk = key(ls[k]); if(!seen.has(kk)){ seen.add(kk); cnt.set(kk, (cnt.get(kk) || 0) + 1); } } });
+  const rep = Math.max(2, Math.ceil(pages.length * 0.3));
+  pages = pages.map(ls => { const e = edge(ls); return ls.filter((l, k) => !(e.has(k) && (PAGE_NO.test(l.text) || (pages.length >= 2 && cnt.get(key(l)) >= rep)))); });
+  const all = [].concat(...pages);
+  if(!all.length) throw new Error('pdf_scan');
+  const body = median(all.filter(l => l.text.length > 8).map(l => Math.round(l.size * 10) / 10)) || median(all.map(l => l.size)) || 10;
+  // 한글 줄 끝이 어절에서 끊겼나: 줄 끝 글자가 낱말 끝에 흔한 글자인 비율
+  let hk = 0, hEnd = 0;
+  for(const l of all){ const c = l.text.slice(-1); if(HANGUL.test(c) && !l.sp){ hk++; if(WORD_END.has(c)) hEnd++; } }
+  const tight = hk >= 20 && hEnd / hk < 0.5;
+  const join = (s, l) => {
+    if(!s) return l.text;
+    if(/[A-Za-z]-$/.test(s) && /^[a-z]/.test(l.text)) return s.slice(0, -1) + l.text;
+    if(tight && HANGUL.test(s.slice(-1)) && /^[\uAC00-\uD7A3]/.test(l.text) && !l.prevSp && !SURE_END.has(s.slice(-1))) return s + l.text;
+    return s + ' ' + l.text;
+  };
+  const paras = []; let cur = null, prev = null;
+  const close = () => { if(cur && cur.text) paras.push({runs: [{t: cur.text, b: false, i: false}], chap: false, sep: false}); cur = null; };
+  pages.forEach((ls, pi) => {
+    const bl = ls.filter(l => Math.abs(l.size - body) < body * 0.15);
+    const xs = new Map(); for(const l of bl){ const k = Math.round(l.x); xs.set(k, (xs.get(k) || 0) + 1); }
+    const left = xs.size ? +[...xs.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0] : (ls[0] ? ls[0].x : 0);
+    const ends = bl.map(l => l.end).sort((a, b) => a - b), right = ends.length ? ends[Math.floor(ends.length * 0.9)] : 0;
+    const gaps = []; for(let k = 1; k < bl.length; k++){ const d = bl[k - 1].y - bl[k].y; if(d > 0 && d < body * 4) gaps.push(d); }
+    const gap = median(gaps) || body * 1.6;
+    for(const l of ls){
+      if(isSep(l.text)){ close(); paras.push({runs: [{t: '* * *', b: false, i: false}], chap: false, sep: true}); prev = null; continue; }
+      if(l.size > body * 1.15 && l.text.length <= 80){   // 본문보다 15% 넘게 큰 짧은 줄: 장 제목(두 줄이면 하나로)
+        const last = paras[paras.length - 1];
+        if(!cur && last && last.chap && prev && prev.big && prev.pi === pi && prev.y - l.y < l.size * 2.2) last.runs[0].t += ' ' + l.text;
+        else { close(); paras.push({runs: [{t: l.text, b: false, i: false}], chap: true, sep: false}); }
+        prev = Object.assign({}, l, {pi, big: true, right}); continue;
+      }
+      let start = !cur;
+      if(cur && prev){
+        if(prev.pi === pi && prev.y - l.y > gap * 1.5) start = true;                                   // 줄 간격이 벌어짐
+        if(l.x > left + body * 0.6 && l.x < left + body * 8) start = true;                              // 들여 쓴 줄
+        if(prev.right && prev.end < prev.right - body * 2.5) start = true;                              // 앞줄이 짧게 끝남
+        if(prev.big) start = true;
+      }
+      if(start){ close(); cur = {text: ''}; }
+      cur.text = join(cur.text, Object.assign({}, l, {prevSp: prev && prev.sp}));
+      prev = Object.assign({}, l, {pi, big: false, right});
+    }
+  });
+  close();
+  if(!paras.length) throw new Error('pdf_scan');
+  return {title: title || stemOf(f.name), author: '', lang: '', paras};
+}
+
+/* EPUB·PDF → 편집할 수 있는 원고. 책의 글은 그대로 옮기고(장 제목·별표, EPUB은 기울임·굵게도), 원고 목록에 새로 만든다 */
 async function epubsToMs(fs, from){
-  W.closePops(); toast('전자책을 읽는 중…', 30000);
+  W.closePops(); toast('글을 읽는 중…', 60000);
   const made = [], bad = [];
   for(const f of fs){
     try{
-      const bk = await epubBook(f);
+      const isPdf = (await sniff(f)) === 'pdf';
+      const bk = isPdf ? await pdfBook(f, (i, n) => { if(n > 20 && i % 10 === 0) toast('PDF에서 글을 뽑는 중… ' + i + ' / ' + n + '쪽', 60000); }) : await epubBook(f);
       const paras = bk.paras.map(p => ({runs: p.runs, chap: !!p.chap}));
       const chars = paras.reduce((s, p) => s + paraText(p).replace(/\s/g, '').length, 0);
       await W.newMs(bk.title, W.parasToHtml(paras));
-      made.push({title: bk.title, chaps: paras.filter(p => p.chap).length, chars});
+      made.push({title: bk.title, chaps: paras.filter(p => p.chap).length, chars, pdf: isPdf});
     }catch(e){ bad.push(f.name + ': ' + errText(e)); }
   }
   $('#toast').hidden = true;
-  if(!made.length){ toast(bad[0] || '읽을 수 있는 전자책이 없습니다', 9000); return 0; }
+  if(!made.length){ toast(bad[0] || '읽을 수 있는 파일이 없습니다', 9000); return 0; }
   const m = made[0], drive = from === 'drive' && W.Drive.enabled();
   const msg = made.length === 1
-    ? '「' + m.title + '」을(를) 원고로 열었습니다 · ' + (m.chaps ? '장 제목 ' + m.chaps + '개 · ' : '') + m.chars.toLocaleString() + '자. 이제 고칠 수 있고, 저장 메뉴에서 한글·워드 파일로도 저장됩니다.'
-    : '전자책 ' + made.length + '권을 원고로 열었습니다. 원고 목록에 있습니다.';
+    ? '「' + m.title + '」을(를) 원고로 열었습니다 · ' + (m.chaps ? '장 제목 ' + m.chaps + '개 · ' : '') + m.chars.toLocaleString() + '자. 이제 고칠 수 있고, 저장 메뉴에서 한글·워드 파일로도 저장됩니다.' + (m.pdf ? ' PDF에서 뽑은 글이라 문단 나눔이 원본과 조금 다를 수 있고, 굵게·기울임은 빠집니다.' : '')
+    : made.length + '개를 원고로 열었습니다. 원고 목록에 있습니다.';
   if(made.length === 1) W.notice(msg + (bad.length ? ' (읽지 못한 파일 ' + bad.length + '개)' : ''), drive ? '드라이브에 한글 파일로 저장' : '한글 파일로 저장', () => { $('#notice').hidden = true; $(drive ? '#dvHwpx' : '#exHwpx').click(); });
   else W.notice(msg + (bad.length ? ' 읽지 못한 파일 ' + bad.length + '개는 뺐습니다 — ' + bad[0] : ''));
   return made.length;
 }
 /* ---- PDF: 쪽 모양 그대로. 보이는 쪽만 그리고, 멀어진 쪽은 지운다 ---- */
 let pdfLib = null;
+/* pdf.js 6에는 문서의 destroy가 없고 불러오기 작업(loadingTask)에 있다 */
+const pdfFree = pdf => { try{ const t = pdf && (pdf.loadingTask || pdf); if(t && t.destroy) t.destroy(); }catch(e){} };
 async function loadPdfLib(){
   if(pdfLib) return pdfLib;
   const at = p => new URL('vendor/pdfjs/' + p, document.baseURI).href;
@@ -417,7 +533,7 @@ async function rdPdf(f, token){
   try{
     pdf = await lib.getDocument({data: new Uint8Array(await f.arrayBuffer()), cMapUrl: at('cmaps/'), cMapPacked: true, standardFontDataUrl: at('standard_fonts/'), wasmUrl: at('wasm/')}).promise;
   }catch(e){ throw new Error(e && e.name === 'PasswordException' ? 'pdf_password' : 'pdf_bad'); }
-  if(rd.token !== token){ pdf.destroy(); return; }
+  if(rd.token !== token){ pdfFree(pdf); return; }
   rd.pdf = pdf;
   const n = pdf.numPages, first = await pdf.getPage(1), v1 = first.getViewport({scale: 1});
   rd.doc.textContent = ''; rd.doc.classList.add('pdf'); $('#rdSize').hidden = true;
@@ -756,9 +872,9 @@ $('#dvEpub').onclick = () => epubFromMs('drive');
 /* 문서 파일 → EPUB. from: 'device' | 'drive' (저장할 곳의 처음 값) */
 async function convertFiles(fs, from){
   W.closePops();
-  // 전자책(EPUB)은 원고로, 나머지 문서는 전자책으로
+  // 전자책(EPUB)과 PDF는 편집 가능 문서로, 나머지 문서는 전자책으로
   const books = [], rest = [];
-  for(const f of fs) (await isEpubFile(f) ? books : rest).push(f);
+  for(const f of fs) (await isBookFile(f) ? books : rest).push(f);
   if(books.length) await epubsToMs(books, from);
   if(!rest.length) return;
   fs = rest;
@@ -804,5 +920,5 @@ window.addEventListener('keydown', e => {
   }
 }, true);
 
-window.__books = {readTextDoc, buildEpub, drawCover, readFile, convertFiles, epubBook, epubsToMs, isEpubFile, sniff, readTxt, errText, paraText};
+window.__books = {readTextDoc, buildEpub, drawCover, readFile, convertFiles, epubBook, pdfBook, epubsToMs, isEpubFile, isBookFile, sniff, readTxt, errText, paraText};
 })();

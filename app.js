@@ -519,7 +519,7 @@ const importErrors = {
   hwp_distribution: '배포용 문서는 열 수 없습니다. 한글에서 일반 문서로 저장해 주세요',
   hwp_empty: '문서에서 본문을 찾지 못했습니다', hwpx_empty: '문서에서 본문을 찾지 못했습니다',
   unknown_format: '한글 문서 형식이 아닙니다', backup: '라이트닝 라이트 원고 백업 파일이 아닙니다',
-  unsupported: 'HWP·HWPX·TXT·EPUB 파일이나 원고 백업(.json)만 불러올 수 있습니다'
+  unsupported: 'HWP·HWPX·TXT·EPUB·PDF 파일이나 원고 백업(.json)만 불러올 수 있습니다'
 };
 $('#importBtn').addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('#fileIn').click(); } });
 let toastT;
@@ -543,7 +543,7 @@ async function importFile(f){
   setSave('saving', '불러오는 중…');
   try{
     if(ext === 'json'){ const n = await importBackup(await f.text()); setSave('saved', '원고 ' + n + '편을 불러왔습니다'); return; }
-    if(window.__books && await window.__books.isEpubFile(f)){   // 전자책은 원고로 바꿔 연다(books.js)
+    if(window.__books && await window.__books.isBookFile(f)){   // 전자책·PDF는 글을 뽑아 원고로 연다(books.js)
       setSave('saved', ''); if(await window.__books.epubsToMs([f], 'device')) setSave('saved', f.name + ' 불러옴'); return;
     }
     const head = new Uint8Array(await f.slice(0, 4).arrayBuffer());
@@ -1072,10 +1072,10 @@ const Drive = (() => {
   if(savedRo && savedRo.exp > Date.now()) ro = savedRo;
   const roOk = () => !!ro && ro.exp > Date.now();
   const okExt = f => pickMode === 'read' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|pdf|epub)$/i.test(f.name || ''))
-    : pickMode === 'convert' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|epub)$/i.test(f.name || ''))
-    : pickMode === 'translate' ? (f.mimeType === GDOC || /\.(epub|txt|docx|hwp|hwpx)$/i.test(f.name || ''))
-    : /\.(hwp|hwpx|txt|epub|json)$/i.test(f.name || '');
-  const MODE_TXT = {import: ['드라이브에서 열기', 'HWP·HWPX·TXT·EPUB'], read: ['드라이브에서 읽기', 'HWP·HWPX·DOCX·TXT·PDF·EPUB·구글 문서'], convert: ['드라이브에서 변환', 'HWP·HWPX·DOCX·TXT·EPUB·구글 문서'], translate: ['드라이브에서 번역할 책', 'EPUB·TXT·DOCX·구글 문서']};
+    : pickMode === 'convert' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|epub|pdf)$/i.test(f.name || ''))
+    : pickMode === 'translate' ? (f.mimeType === GDOC || /\.(epub|pdf|txt|docx|hwp|hwpx)$/i.test(f.name || ''))
+    : /\.(hwp|hwpx|txt|epub|pdf|json)$/i.test(f.name || '');
+  const MODE_TXT = {import: ['드라이브에서 열기', 'HWP·HWPX·TXT·EPUB·PDF'], read: ['드라이브에서 읽기', 'HWP·HWPX·DOCX·TXT·PDF·EPUB·구글 문서'], convert: ['드라이브에서 변환', 'HWP·HWPX·DOCX·TXT·EPUB·PDF·구글 문서'], translate: ['드라이브에서 번역할 책', 'EPUB·PDF·TXT·DOCX·구글 문서']};
   const dlg = $('#drvDlg'), dlgList = $('#drvList'), dlgMsg = $('#drvMsg'), dlgQ = $('#drvQ');
   const fmtSize = n => { n = Number(n) || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; };
   const fmtDay = t => { const d = new Date(t); return isNaN(d) ? '' : d.getFullYear() + '.' + (d.getMonth() + 1) + '.' + d.getDate(); };
