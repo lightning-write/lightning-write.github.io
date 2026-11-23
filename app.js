@@ -519,7 +519,7 @@ const importErrors = {
   hwp_distribution: '배포용 문서는 열 수 없습니다. 한글에서 일반 문서로 저장해 주세요',
   hwp_empty: '문서에서 본문을 찾지 못했습니다', hwpx_empty: '문서에서 본문을 찾지 못했습니다',
   unknown_format: '한글 문서 형식이 아닙니다', backup: '라이트닝 라이트 원고 백업 파일이 아닙니다',
-  unsupported: 'HWP·HWPX·TXT 파일이나 원고 백업(.json)만 불러올 수 있습니다'
+  unsupported: 'HWP·HWPX·TXT·EPUB 파일이나 원고 백업(.json)만 불러올 수 있습니다'
 };
 $('#importBtn').addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('#fileIn').click(); } });
 let toastT;
@@ -543,6 +543,9 @@ async function importFile(f){
   setSave('saving', '불러오는 중…');
   try{
     if(ext === 'json'){ const n = await importBackup(await f.text()); setSave('saved', '원고 ' + n + '편을 불러왔습니다'); return; }
+    if(window.__books && await window.__books.isEpubFile(f)){   // 전자책은 원고로 바꿔 연다(books.js)
+      setSave('saved', ''); if(await window.__books.epubsToMs([f], 'device')) setSave('saved', f.name + ' 불러옴'); return;
+    }
     const head = new Uint8Array(await f.slice(0, 4).arrayBuffer());
     const binary = (head[0] === 0x50 && head[1] === 0x4B) || (head[0] === 0xD0 && head[1] === 0xCF);
     if(!binary && ext && ext !== 'txt' && ext !== 'text') throw new Error('unsupported');
@@ -1036,15 +1039,16 @@ const Drive = (() => {
   const saveHwpx = (id, title, blob) => saveFile(id, 'hwpx', safeName(title) + '.hwpx', new Blob([blob], {type: 'application/hwp+zip'}));
   /* ---- 드라이브에서 파일 열기: 드라이브 전체를 읽기 전용으로 훑어 HWP·HWPX·TXT·백업(.json)을 보여 준다 ---- */
   const READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
-  let ro = null, pickFiles = null, pickBusy = false, pickMode = 'import';   // import: 원고로 불러오기, read: 읽기 모드로 보기, convert: EPUB으로 바꾸기
+  let ro = null, pickFiles = null, pickBusy = false, pickMode = 'import';   // import: 원고로 불러오기, read: 읽기 모드로 보기, convert: EPUB↔원고로 바꾸기, translate: 번역 모드
   const GDOC = 'application/vnd.google-apps.document', DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   const savedRo = lsGet('ro', null);
   if(savedRo && savedRo.exp > Date.now()) ro = savedRo;
   const roOk = () => !!ro && ro.exp > Date.now();
   const okExt = f => pickMode === 'read' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|pdf|epub)$/i.test(f.name || ''))
-    : pickMode === 'convert' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt)$/i.test(f.name || ''))
-    : /\.(hwp|hwpx|txt|json)$/i.test(f.name || '');
-  const MODE_TXT = {import: ['드라이브에서 열기', 'HWP·HWPX·TXT'], read: ['드라이브에서 읽기', 'HWP·HWPX·DOCX·TXT·PDF·EPUB·구글 문서'], convert: ['드라이브에서 EPUB으로 변환', 'HWP·HWPX·DOCX·TXT·구글 문서']};
+    : pickMode === 'convert' ? (f.mimeType === GDOC || /\.(hwp|hwpx|docx|txt|epub)$/i.test(f.name || ''))
+    : pickMode === 'translate' ? (f.mimeType === GDOC || /\.(epub|txt|docx|hwp|hwpx)$/i.test(f.name || ''))
+    : /\.(hwp|hwpx|txt|epub|json)$/i.test(f.name || '');
+  const MODE_TXT = {import: ['드라이브에서 열기', 'HWP·HWPX·TXT·EPUB'], read: ['드라이브에서 읽기', 'HWP·HWPX·DOCX·TXT·PDF·EPUB·구글 문서'], convert: ['드라이브에서 변환', 'HWP·HWPX·DOCX·TXT·EPUB·구글 문서'], translate: ['드라이브에서 번역할 책', 'EPUB·TXT·DOCX·구글 문서']};
   const dlg = $('#drvDlg'), dlgList = $('#drvList'), dlgMsg = $('#drvMsg'), dlgQ = $('#drvQ');
   const fmtSize = n => { n = Number(n) || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; };
   const fmtDay = t => { const d = new Date(t); return isNaN(d) ? '' : d.getFullYear() + '.' + (d.getMonth() + 1) + '.' + d.getDate(); };
@@ -1092,6 +1096,7 @@ const Drive = (() => {
       closePick();
       if(mode === 'read') await window.__books.readFile(file, f.name);
       else if(mode === 'convert') await window.__books.convertFiles([file], 'drive');
+      else if(mode === 'translate') await window.__tr.openFile(file);
       else await importFile(file);
     }catch(e){ dlgMsg.textContent = e.code === 'network' ? '인터넷에 연결되어 있지 않습니다.' : e.code === 'http' && e.status === 403 ? '이 파일은 받을 수 없습니다 (구글 문서는 10MB까지).' : '파일을 가져오지 못했습니다.'; }
   }
@@ -1114,7 +1119,8 @@ const Drive = (() => {
   $('#opDrive').onclick = () => setTimeout(() => pick('import'), 0);
   $('#readDrive').onclick = () => setTimeout(() => pick('read'), 0);
   $('#convDrive').onclick = () => setTimeout(() => pick('convert'), 0);
-  if(!CID){ $('#opDrive').hidden = true; $('#readDrive').hidden = true; $('#convDrive').hidden = true; }
+  $('#trDrive').onclick = () => setTimeout(() => pick('translate'), 0);
+  if(!CID){ $('#opDrive').hidden = true; $('#readDrive').hidden = true; $('#convDrive').hidden = true; $('#trDrive').hidden = true; }
   /* 읽기 전용 권한: 한 시간 동안 이 기기에 기억해 둔다 */
   async function roAsk(){
     if(roOk()) return true;
@@ -1231,6 +1237,7 @@ const Reset = (() => {
     }
     try{
       await DB.clear();
+      try{ indexedDB.deleteDatabase('wongo-tr'); }catch(e){}   // 번역 모드가 보관한 책과 번역
       const keep = new Set();
       if(keepDrive) ['token', 'drive-on'].forEach(k => keep.add(LS + k));
       if(keepAi) ['ai-key', 'ai-model', 'ai-models'].forEach(k => keep.add(LS + k));
@@ -1305,7 +1312,7 @@ $('#installBtn').onclick = async () => { if(!installEvt) return; installEvt.prom
 window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; });
 
 /* ---------- 시작 ---------- */
-window.__wongo = {download, saveTo, driveReady, fileBase, titleVal, setSave, importErrors, paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, toast, outline, refreshList, prefs, savePrefs, narrow, closePops, chapRe, sceneRe, numRe, saveLt, mergeLt};
+window.__wongo = {newMs, parasToHtml, download, saveTo, driveReady, fileBase, titleVal, setSave, importErrors, paragraphs, DB, Drive, flush, cur: () => cur, onEdit, notice, toast, outline, refreshList, prefs, savePrefs, narrow, closePops, chapRe, sceneRe, numRe, saveLt, mergeLt};
 (async function boot(){
   applyPrefs();
   if(narrow()) drawer(false);

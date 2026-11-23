@@ -1,5 +1,6 @@
-/* 라이트닝 라이트 — 읽기 모드 · EPUB 만들기 · PDF(인쇄)
+/* 라이트닝 라이트 — 읽기 모드 · EPUB 만들기 · EPUB을 원고로 · PDF(인쇄)
    읽기 모드: HWP·HWPX·DOCX·TXT·PDF·EPUB을 열어 보기만 한다. 기기에도 드라이브에도 저장하지 않고, 닫으면 사라진다.
+   EPUB → 원고: 변환 모드(또는 편집 모드)에서 EPUB을 고르면 장 제목·별표·기울임·굵게를 살린 원고로 연다. epubBook은 번역 모드(translate.js)도 쓴다.
    EPUB: 크레마샤인(흑백 전자잉크)용 조판. 본문은 한 글자도 고치지 않는다. 표지는 제목·작가 이름으로 그린다.
    PDF: 본문 서식 그대로 인쇄 창을 띄운다('PDF로 저장'). */
 (() => {
@@ -170,7 +171,8 @@ function resolvePath(base, href){
   for(const seg of href.split('/')){ if(seg === '..') parts.pop(); else if(seg && seg !== '.') parts.push(seg); }
   return parts.join('/');
 }
-async function rdEpub(f, token){
+/* EPUB 꾸러미 열기: 차례(spine)·책 정보(OPF). 잠긴 책(DRM)은 여기서 막는다 */
+async function epubPkg(f){
   let z;
   try{ z = await Hangul.unzip(await f.arrayBuffer()); }catch(e){ throw new Error('epub_bad'); }
   const cont = await z.text('META-INF/container.xml'); if(!cont) throw new Error('epub_bad');
@@ -190,6 +192,16 @@ async function rdEpub(f, token){
     const locked = new Set([...XP.parseFromString(encX, 'application/xml').getElementsByTagNameNS('*', 'CipherReference')].map(c => resolvePath('', c.getAttribute('URI'))));
     if(spine.some(s => locked.has(s.it.href))) throw new Error('epub_drm');
   }
+  const meta = tag => { const e = opf.getElementsByTagNameNS('*', tag)[0]; return e ? e.textContent.replace(/\s+/g, ' ').trim() : ''; };
+  return {z, XP, spine, title: meta('title'), author: meta('creator'), lang: meta('language')};
+}
+const spineDoc = (XP, text) => {
+  let d = XP.parseFromString(text, 'application/xhtml+xml');
+  if(d.getElementsByTagName('parsererror').length) d = XP.parseFromString(text, 'text/html');
+  return d.getElementsByTagNameNS('*', 'body')[0] || d.documentElement;
+};
+async function rdEpub(f, token){
+  const {z, XP, spine} = await epubPkg(f);
   const blobUrl = new Map();
   async function img(path){
     if(!path) return null;
@@ -227,9 +239,7 @@ async function rdEpub(f, token){
   for(const s of spine){
     if(!s.linear || /\bnav\b/.test(s.it.props)) continue;
     const text = await z.text(s.it.href); if(text == null) continue;
-    let d = XP.parseFromString(text, 'application/xhtml+xml');
-    if(d.getElementsByTagName('parsererror').length) d = XP.parseFromString(text, 'text/html');
-    const body = d.getElementsByTagNameNS('*', 'body')[0] || d.documentElement;
+    const body = spineDoc(XP, text);
     const part = document.createElement('div'); part.className = 'rd-part';
     await clean(body, part, s.it.href);
     if(rd.token !== token) return;
@@ -237,6 +247,102 @@ async function rdEpub(f, token){
   }
   if(!parts) throw new Error('empty');
   rd.doc.textContent = ''; rd.doc.classList.add('indent'); rd.doc.appendChild(frag);
+}
+/* ---- EPUB → 문단 모델: 원고로 바꾸기·번역 모드가 쓴다 ----
+   차례 순서대로 글만 문단으로 옮긴다. 제목 태그(h1~h6)는 장 제목(chap), <hr>는 별표 줄(sep), 그림·표 모양·스타일은 버린다.
+   기울임·굵게는 살린다. 구텐베르크 책 앞뒤의 안내·약관 글에는 pg를 붙여 둔다(번역 모드는 건너뛴다).
+   → {title, author, lang, paras: [{runs:[{t,b,i}], chap, lv, sep, pg}]} */
+const BLOCK = new Set(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'dt', 'dd', 'td', 'th', 'figcaption', 'caption', 'section', 'article', 'header', 'footer', 'aside', 'nav', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'ul', 'ol', 'dl', 'figure', 'center', 'address', 'body', 'main', 'hgroup']);
+const SKIP = new Set(['img', 'image', 'svg', 'math', 'rt', 'rp']);
+const PG_START = /\*{3}\s*START OF (THE|THIS) PROJECT GUTENBERG/i, PG_END = /\*{3}\s*END OF (THE|THIS) PROJECT GUTENBERG/i;
+async function epubBook(f){
+  const pkg = await epubPkg(f), paras = [];
+  let cur = null;
+  const end = () => {
+    if(!cur) return;
+    const rs = cur.runs;
+    if(rs.length){ rs[0].t = rs[0].t.replace(/^\s+/, ''); rs[rs.length - 1].t = rs[rs.length - 1].t.replace(/\s+$/, ''); }
+    cur.runs = rs.filter(r => r.t);
+    if(cur.runs.some(r => r.t.trim())) paras.push(cur);
+    cur = null;
+  };
+  const add = (t, c) => {
+    if(!cur){ if(!t.trim()) return; cur = {runs: [], chap: !!c.h, lv: c.h || 0, sep: false, pg: c.pg}; t = t.replace(/^\s+/, ''); }
+    const l = cur.runs[cur.runs.length - 1];
+    if(l && l.b === c.b && l.i === c.i) l.t += t; else cur.runs.push({t, b: c.b, i: c.i});
+  };
+  function walk(node, c){
+    for(const n of node.childNodes){
+      if(n.nodeType === 3){
+        if(c.pre){ n.nodeValue.split('\n').forEach((ln, k) => { if(k) end(); add(ln.replace(/\t/g, ' '), c); }); }
+        else add(n.nodeValue.replace(/[ \t\n\r\f]+/g, ' '), c);
+        continue;
+      }
+      if(n.nodeType !== 1) continue;
+      const tag = n.localName.toLowerCase();
+      if(DROP.has(tag) || SKIP.has(tag)) continue;
+      if(tag === 'br'){ if(c.h) add(' ', c); else end(); continue; }
+      if(tag === 'hr'){ end(); paras.push({runs: [{t: '* * *', b: false, i: false}], chap: false, lv: 0, sep: true, pg: c.pg}); continue; }
+      const id = n.getAttribute('id') || '', cls = n.getAttribute('class') || '';
+      const k = Object.assign({}, c);
+      if(/\b(pagenum|pageno|page-?number)\b/i.test(cls)) continue;   // 종이책 쪽 번호 표시는 버린다
+      if(/^pg-(header|footer)/i.test(id) || /\bpg-boilerplate\b/i.test(cls)) k.pg = true;
+      if(/^h[1-6]$/.test(tag)) k.h = +tag[1];
+      if(tag === 'i' || tag === 'em' || tag === 'cite' || tag === 'dfn' || tag === 'var') k.i = true;
+      if(tag === 'b' || tag === 'strong') k.b = true;
+      if(tag === 'pre') k.pre = true;
+      if(BLOCK.has(tag)){ end(); walk(n, k); end(); } else walk(n, k);
+    }
+  }
+  for(const s of pkg.spine){
+    if(!s.linear || /\bnav\b/.test(s.it.props)) continue;
+    const text = await pkg.z.text(s.it.href); if(text == null) continue;
+    walk(spineDoc(pkg.XP, text), {b: false, i: false, h: 0, pre: false, pg: false});
+    end();
+  }
+  // 옛 구텐베르크 책: '*** START OF …' 앞과 '*** END OF …' 뒤가 안내·약관 글
+  const si = paras.findIndex(p => PG_START.test(paraText(p))), ei = paras.findIndex(p => PG_END.test(paraText(p)));
+  if(si >= 0) for(let k = 0; k <= si; k++) paras[k].pg = true;
+  if(ei >= 0) for(let k = ei; k < paras.length; k++) paras[k].pg = true;
+  // 별표 줄 정리: 처음·끝, 잇달아 나온 것, 장 제목 바로 앞뒤의 것은 뺀다
+  const out = [];
+  for(let k = 0; k < paras.length; k++){
+    const p = paras[k];
+    if(p.sep){
+      const prev = out[out.length - 1], next = paras.slice(k + 1).find(x => !x.sep);
+      if(!prev || prev.sep || prev.chap || !next || next.chap || !!next.pg !== !!p.pg) continue;
+    }
+    out.push(p);
+  }
+  if(!out.length) throw new Error('empty');
+  return {title: pkg.title || stemOf(f.name), author: pkg.author, lang: pkg.lang, paras: out};
+}
+async function isEpubFile(f){
+  const kind = await sniff(f);
+  return kind === 'zip' && (extOf(f.name) === 'epub' || await isEpub(f));
+}
+/* EPUB → 편집할 수 있는 원고. 책의 글은 그대로 옮기고(장 제목·별표·기울임·굵게 포함), 원고 목록에 새로 만든다 */
+async function epubsToMs(fs, from){
+  W.closePops(); toast('전자책을 읽는 중…', 30000);
+  const made = [], bad = [];
+  for(const f of fs){
+    try{
+      const bk = await epubBook(f);
+      const paras = bk.paras.map(p => ({runs: p.runs, chap: !!p.chap}));
+      const chars = paras.reduce((s, p) => s + paraText(p).replace(/\s/g, '').length, 0);
+      await W.newMs(bk.title, W.parasToHtml(paras));
+      made.push({title: bk.title, chaps: paras.filter(p => p.chap).length, chars});
+    }catch(e){ bad.push(f.name + ': ' + errText(e)); }
+  }
+  $('#toast').hidden = true;
+  if(!made.length){ toast(bad[0] || '읽을 수 있는 전자책이 없습니다', 9000); return 0; }
+  const m = made[0], drive = from === 'drive' && W.Drive.enabled();
+  const msg = made.length === 1
+    ? '「' + m.title + '」을(를) 원고로 열었습니다 · ' + (m.chaps ? '장 제목 ' + m.chaps + '개 · ' : '') + m.chars.toLocaleString() + '자. 이제 고칠 수 있고, 저장 메뉴에서 한글·워드 파일로도 저장됩니다.'
+    : '전자책 ' + made.length + '권을 원고로 열었습니다. 원고 목록에 있습니다.';
+  if(made.length === 1) W.notice(msg + (bad.length ? ' (읽지 못한 파일 ' + bad.length + '개)' : ''), drive ? '드라이브에 한글 파일로 저장' : '한글 파일로 저장', () => { $('#notice').hidden = true; $(drive ? '#dvHwpx' : '#exHwpx').click(); });
+  else W.notice(msg + (bad.length ? ' 읽지 못한 파일 ' + bad.length + '개는 뺐습니다 — ' + bad[0] : ''));
+  return made.length;
 }
 /* ---- PDF: 쪽 모양 그대로. 보이는 쪽만 그리고, 멀어진 쪽은 지운다 ---- */
 let pdfLib = null;
@@ -589,7 +695,14 @@ $('#exEpub').onclick = () => epubFromMs('device');
 $('#dvEpub').onclick = () => epubFromMs('drive');
 /* 문서 파일 → EPUB. from: 'device' | 'drive' (저장할 곳의 처음 값) */
 async function convertFiles(fs, from){
-  W.closePops(); toast('문서를 읽는 중…', 20000);
+  W.closePops();
+  // 전자책(EPUB)은 원고로, 나머지 문서는 전자책으로
+  const books = [], rest = [];
+  for(const f of fs) (await isEpubFile(f) ? books : rest).push(f);
+  if(books.length) await epubsToMs(books, from);
+  if(!rest.length) return;
+  fs = rest;
+  toast('문서를 읽는 중…', 20000);
   const docs = [], bad = [];
   for(const f of fs){
     try{
@@ -631,5 +744,5 @@ window.addEventListener('keydown', e => {
   }
 }, true);
 
-window.__books = {readTextDoc, buildEpub, drawCover, readFile, convertFiles};
+window.__books = {readTextDoc, buildEpub, drawCover, readFile, convertFiles, epubBook, epubsToMs, isEpubFile, sniff, readTxt, errText, paraText};
 })();

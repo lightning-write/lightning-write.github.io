@@ -400,6 +400,64 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .tl-meta input{width:9em}
 .tl-btns{margin-left:auto;display:flex;gap:2px}
 .tl-meta button{font-size:12px;padding:2px 8px;color:var(--muted)}
+/* ---------- 번역 모드 (translate.js) ---------- */
+#openPop{max-height:calc(100dvh - 90px);overflow:auto}
+.tr-rc{display:flex;align-items:center;gap:2px}
+.tr-rc .mi{flex:1;min-width:0}
+.tr-rc .mi b{font-weight:500}
+.tr-x{flex:none;border:0;background:transparent;color:var(--muted);padding:6px 9px;border-radius:6px;font-size:13px;cursor:pointer}
+.tr-x:hover{background:var(--hover);color:var(--ink)}
+#trReader{position:fixed;inset:0;z-index:60;background:var(--paper);color:var(--ink);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#trReader[hidden]{display:none}
+#trReader.under{z-index:45}
+#trHead{flex:none;display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;border-bottom:1px solid var(--line);background:var(--chrome);font-size:13px}
+.tr-badge{flex:none;font-size:11.5px;color:var(--accent-ink);background:var(--accent);border-radius:9px;padding:1px 9px}
+#trName{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#trInfo{flex:none;color:var(--muted);font-variant-numeric:tabular-nums}
+#trBar{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--chrome);font-size:13px;overflow-x:auto;scrollbar-width:none}
+#trBar::-webkit-scrollbar{display:none}
+#trBar > *{flex:none}
+#trCh{max-width:min(46vw,300px);min-height:32px;font-size:13px}
+#trBar button,#trFoot button,#trClose{font-family:var(--ui);font-size:13px;min-height:32px}
+#trBar .seg-b{font-size:13px;padding:4px 10px}
+.tr-fs{display:flex;gap:4px}
+.tr-br{display:none}
+.tr-fs button{min-width:38px}
+#trEdit[aria-pressed="true"],#trAll[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.tr-menu{position:absolute;z-index:5;background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.16);padding:6px;min-width:240px;max-width:calc(100vw - 16px)}
+.tr-menu[hidden]{display:none}
+.tr-menu .mi:disabled{opacity:.45;cursor:default}
+#trScroll{flex:1;min-height:0;overflow:auto;padding:0 20px;outline:none;overscroll-behavior:contain}
+#trDoc{max-width:720px;margin:0 auto;padding:36px 0 60px;font-family:var(--font,var(--serif));font-size:var(--fs,16px);line-height:var(--lh,1.9);text-align:justify;word-break:var(--wb,normal);overflow-wrap:break-word;-webkit-user-select:text;user-select:text}
+#trDoc p{margin:0;min-height:1em}
+#trDoc.indent .tp:not(.c):not(.s) p{text-indent:1em}
+#trDoc .o:lang(en){hyphens:auto;-webkit-hyphens:auto}
+#trDoc .tp.c p{font-weight:700;font-size:1.2em;margin:1.4em 0 .7em;text-align:left;text-indent:0;line-height:1.5}
+#trDoc .tp.s p{text-align:center;text-indent:0;margin:.5em 0}
+#trDoc.v-tr .tp.has .o,#trDoc.v-tr .tp:not(.has) .k,#trDoc.v-both .tp:not(.has) .k,#trDoc.v-src .k{display:none}
+#trDoc.v-tr .tp:not(.has):not(.s) .o{color:var(--muted)}
+#trDoc.v-both .tp:not(.s){margin-bottom:.9em}
+#trDoc.v-both .tp.has .o{color:var(--muted);font-size:.86em;line-height:1.65;margin-top:.15em}
+#trDoc.v-both .tp.c.has .o{font-size:.8em;margin-top:-.4em}
+#trDoc .tp.wait:not(.has){background:var(--live);border-radius:4px}
+#trDoc .tp.live .k::after{content:"";display:inline-block;width:2px;height:1.05em;margin-left:2px;vertical-align:-.15em;background:var(--accent);animation:blink 1s steps(2,start) infinite}
+#trDoc .tp.fail .o::after{content:" · 번역 안 됨";font-family:var(--ui);font-size:11px;color:var(--warn);font-style:normal;font-weight:400}
+#trDoc.editing .tp.has .k{outline:none;border-radius:3px;cursor:text}
+#trDoc.editing .tp.has .k:hover,#trDoc.editing .tp.has .k:focus{background:var(--live)}
+#trDoc.editing .tp.ed .k{text-decoration:underline dotted var(--line);text-underline-offset:.3em}
+.tr-end{margin:3em 0 0;padding-top:1.4em;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;font-family:var(--ui);font-size:13px}
+.tr-end button{max-width:48%;text-align:left;white-space:normal;line-height:1.45}
+.tr-end .next{text-align:right;margin-left:auto}
+.tr-end small{display:block;color:var(--muted);font-size:11.5px}
+#trFoot{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--line);background:var(--chrome);font-size:12.5px;flex-wrap:wrap}
+#trStat{flex:1 1 120px;min-width:0;color:var(--muted);line-height:1.45}
+#trStat.err{color:var(--warn)}
+#trStat.busy{color:var(--accent)}
+.tr-nav{display:flex;gap:4px}
+.tr-nav button{min-width:40px;font-size:16px!important}
+#trDlg{z-index:70}
+#trGl{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--paper);font:13px/1.6 var(--ui);resize:vertical;text-align:left}
+@media (max-width:620px){ #trHead{gap:8px;padding-left:12px} #trInfo{font-size:12px} #trBar{flex-wrap:wrap;row-gap:6px} #trCh{flex:1 1 120px;min-width:0;max-width:none} #trBar .tr-br{display:block;flex:0 0 100%;height:0} #trScroll{padding:0 16px} #trDoc{padding-top:24px} #trFoot{gap:6px} }
 /* ---------- 읽기 모드 · EPUB 만들기 · PDF(인쇄) ---------- */
 #reader{position:fixed;inset:0;z-index:60;background:var(--paper);color:var(--ink);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 #reader[hidden]{display:none}
@@ -548,16 +606,21 @@ button.danger:disabled{opacity:.4}
   </div>
   <div id="openPop" class="pop menu" role="menu" hidden>
     <div class="mh">편집 모드<small>원고로 불러와 고칩니다</small></div>
-    <label id="importBtn" for="fileIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·TXT, 원고 백업(.json)</small></label>
-    <button id="opDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>HWP·HWPX·TXT, 원고 백업(.json)</small></button>
+    <label id="importBtn" for="fileIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·TXT·EPUB, 원고 백업(.json)</small></label>
+    <button id="opDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>HWP·HWPX·TXT·EPUB, 원고 백업(.json)</small></button>
     <hr>
     <div class="mh">읽기 모드<small>보기만 하고 저장하지 않습니다</small></div>
     <label id="readBtn" for="readIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·DOCX·TXT·PDF·EPUB</small></label>
     <button id="readDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>위 형식과 구글 문서</small></button>
     <hr>
-    <div class="mh">변환 모드<small>문서를 전자책(EPUB)으로</small></div>
-    <label id="convBtn" for="convIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·DOCX·TXT, 여러 파일도 한꺼번에</small></label>
-    <button id="convDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>HWP·HWPX·DOCX·TXT와 구글 문서</small></button>
+    <div class="mh">변환 모드<small>문서 → 전자책(EPUB) · 전자책 → 고칠 수 있는 원고</small></div>
+    <label id="convBtn" for="convIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>HWP·HWPX·DOCX·TXT는 EPUB으로, EPUB은 원고로. 여러 파일도 한꺼번에</small></label>
+    <button id="convDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>위 형식과 구글 문서</small></button>
+    <hr>
+    <div class="mh">번역 모드<small>외국어 책을 장마다 한국어로 옮기며 읽고 고칩니다</small></div>
+    <div id="trRecent"></div>
+    <label id="trBtn" for="trIn" class="mi" role="menuitem" tabindex="0">이 기기의 파일<small>EPUB·TXT·DOCX (구텐베르크 책 등)</small></label>
+    <button id="trDrive" class="mi" role="menuitem">구글 드라이브의 파일<small>EPUB·TXT·DOCX와 구글 문서</small></button>
   </div>
 
   <div id="exportMenu" class="pop menu" role="menu" hidden>
@@ -759,6 +822,50 @@ button.danger:disabled{opacity:.4}
   <div id="rdScroll" tabindex="0"><div id="rdDoc"></div></div>
 </div>
 
+<div id="trReader" hidden role="dialog" aria-modal="true" aria-labelledby="trName">
+  <header id="trHead"><span class="tr-badge">번역 모드</span><b id="trName"></b><span id="trInfo"></span><button id="trClose" type="button">닫기</button></header>
+  <div id="trBar">
+    <select id="trCh" aria-label="차례"></select>
+    <span class="seg" role="group" aria-label="보기"><button class="seg-b" type="button" data-v="tr" title="번역문만. 아직 옮기지 않은 문단은 원문을 흐리게">번역</button><button class="seg-b" type="button" data-v="both" title="번역문 아래에 원문">대조</button><button class="seg-b" type="button" data-v="src" title="원문만">원문</button></span>
+    <span class="tr-br" aria-hidden="true"></span>
+    <span class="tr-fs" role="group" aria-label="글자 크기"><button id="trSm" type="button" aria-label="글자 작게">가−</button><button id="trLg" type="button" aria-label="글자 크게">가+</button></span>
+    <button id="trEdit" type="button" aria-pressed="false" title="번역문을 눌러 직접 고칩니다. 고친 문단은 다시 번역해도 그대로 둡니다">고치기</button>
+    <button id="trGlBtn" type="button" title="이름 표기·말투, 이 장 다시 번역, 남은 분량">표기·설정</button>
+    <button id="trMsBtn" type="button" aria-haspopup="true" aria-expanded="false" title="번역문으로 편집할 수 있는 원고를 만듭니다">원고로</button>
+  </div>
+  <div id="trMsMenu" class="tr-menu" role="menu" hidden>
+    <button id="trMsDone" class="mi" type="button" role="menuitem">번역한 장만<small></small></button>
+    <button id="trMsAll" class="mi" type="button" role="menuitem">책 전체<small>아직 번역하지 않은 곳은 원문 그대로</small></button>
+  </div>
+  <div id="trScroll" tabindex="0"><div id="trDoc" class="v-tr"></div></div>
+  <footer id="trFoot">
+    <span id="trStat" aria-live="polite"></span>
+    <button id="trAct" type="button" hidden></button>
+    <button id="trAll" type="button" aria-pressed="false" title="지금 장 다음부터 책 끝까지 차례로 번역합니다(이 화면을 열어 둔 동안)">끝까지 번역</button>
+    <span class="tr-nav"><button id="trPrev" type="button" aria-label="앞 장">‹</button><button id="trNext" type="button" aria-label="다음 장">›</button></span>
+  </footer>
+</div>
+
+<div id="trDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="trDlgH">
+  <div class="sheet-box">
+    <header class="sheet-head"><h2 id="trDlgH">번역 표기·설정</h2><button id="trDlgClose" class="ghost" type="button">닫기</button></header>
+    <div class="sheet-body ai-body">
+      <h3>이름 표기와 말투</h3>
+      <textarea id="trGl" rows="10" spellcheck="false" aria-label="이름 표기와 말투"></textarea>
+      <p class="hint">한 줄에 하나씩 「원어 = 한국어」로 적습니다(예: Darcy = 다아시, 말투: 엘리자베스→다아시 = 존댓말). 번역할 때마다 AI가 처음 나온 이름을 보태고, 여기서 고치면 다음 대목부터 따릅니다.</p>
+      <h3>이 장</h3>
+      <p><button id="trRedo" type="button">이 장 다시 번역</button></p>
+      <p class="hint">표기를 고친 뒤 누르면 지금 장을 처음부터 다시 옮깁니다. 직접 고친 문단은 그대로 둡니다.</p>
+      <h3>남은 분량</h3>
+      <p id="trLeft"></p>
+      <p class="hint">번역은 설정(톱니바퀴) → lightning의 Gemini 키와 모델로 합니다. 무료 등급은 보낸 글을 구글이 제품 개선에 쓸 수 있고, 하루에 부를 수 있는 횟수가 정해져 있습니다(Flash-Lite가 가장 넉넉함). 번역한 문단은 이 기기에 보관되어, 같은 책을 다시 열면 이어집니다.</p>
+      <h3>이 책 지우기</h3>
+      <p><button id="trForget" type="button">이 기기에 보관한 이 책과 번역 지우기</button></p>
+      <p id="trDlgMsg" class="hint ai-msg" aria-live="polite"></p>
+    </div>
+  </div>
+</div>
+
 <div id="epubDlg" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="epTitleH">
   <div class="sheet-box">
     <header class="sheet-head"><h2 id="epTitleH">전자책(EPUB) 만들기</h2><button id="epClose" class="ghost" type="button">닫기</button></header>
@@ -793,7 +900,8 @@ button.danger:disabled{opacity:.4}
 <div id="toast" role="status" hidden></div>
   <input id="fileIn" type="file" class="vh" tabindex="-1" aria-hidden="true">
   <input id="readIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept=".hwp,.hwpx,.docx,.txt,.pdf,.epub,application/pdf,application/epub+zip,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-  <input id="convIn" type="file" class="vh" tabindex="-1" aria-hidden="true" multiple accept=".hwp,.hwpx,.docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+  <input id="convIn" type="file" class="vh" tabindex="-1" aria-hidden="true" multiple accept=".hwp,.hwpx,.docx,.txt,.epub,text/plain,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+  <input id="trIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept=".epub,.txt,.docx,.hwp,.hwpx,application/epub+zip,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
   <input id="coverIn" type="file" class="vh" tabindex="-1" aria-hidden="true" accept="image/*">
 </div>
 <script src="config.js"></script>
@@ -804,5 +912,6 @@ button.danger:disabled{opacity:.4}
 <script src="lightning.js"></script>
 <script src="pdfout.js"></script>
 <script src="books.js"></script>
+<script src="translate.js"></script>
 </body>
 </html>
