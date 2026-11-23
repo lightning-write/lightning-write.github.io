@@ -459,9 +459,9 @@ $('#trPrev').onclick = () => go(view.ch - 1);
 $('#trNext').onclick = () => go(view.ch + 1);
 $('#trAll').onclick = () => { if(!bk) return; bk.all = !bk.all; saveSoon(); if(bk.all){ tq.stopped = false; pump(); } foot(); };
 
-/* 전체 화면으로 읽기: 위·아래 띠를 숨기고 글만 보인다. 되는 기기(안드로이드·PC 브라우저)에서는 브라우저의 전체 화면도 켠다.
+/* 전체 화면으로 읽기: 위·아래 띠를 숨기고 글만 보인다. 브라우저의 전체 화면(requestFullscreen)은 쓰지 않는다
+   — 켤 때마다 브라우저가 「전체 화면을 종료하려면…」 안내를 띄우는데 페이지에서 끌 수 없어서(작가 요청으로 뺌).
    글을 한 번 누르면 띠가 잠깐 글 위로 나오고(peek), 한 번 더 누르면 들어간다. F 키로 켜고 끄고, Esc로 끈다 */
-const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
 function setFull(on){
   on = !!on;
   if(on === reader.classList.contains('full')) return;
@@ -471,16 +471,10 @@ function setFull(on){
   $('#trFull').setAttribute('aria-label', on ? '전체 화면 끝내기' : '전체 화면으로 읽기');
   $('#trFull').title = on ? '전체 화면 끝내기 (F·Esc)' : '전체 화면으로 읽기 (F)';
   closeMsMenu();
-  try{
-    const root = document.documentElement;   // 페이지 전체를 전체 화면으로(알림·설정 창도 그 위에 뜨게)
-    if(on && !fsEl()){ const rq = root.requestFullscreen || root.webkitRequestFullscreen; if(rq){ const p = rq.call(root, {navigationUI: 'hide'}); if(p && p.catch) p.catch(() => {}); } }
-    if(!on && fsEl()){ const ex = document.exitFullscreen || document.webkitExitFullscreen; if(ex){ const p = ex.call(document); if(p && p.catch) p.catch(() => {}); } }
-  }catch(e){}
   if(pos) requestAnimationFrame(() => goPos(pos));   // 띠가 사라지거나 나와도 읽던 문단을 그대로
-  if(on) toast('글을 누르면 위·아래 띠가 나옵니다', 2500);
+  if(on && !lsGet('tr-full-tip')){ lsSet('tr-full-tip', 1); toast('글을 누르면 위·아래 띠가 나옵니다', 2500); }   // 이 기기에서 처음 한 번만
 }
 $('#trFull').onclick = e => { e.stopPropagation(); setFull(!reader.classList.contains('full')); };
-for(const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { if(!fsEl() && reader.classList.contains('full')) setFull(false); });
 scroller.addEventListener('click', e => {
   if(!reader.classList.contains('full')) return;
   if(e.target.closest('button, a, select, [contenteditable="true"]')) return;

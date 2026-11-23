@@ -130,7 +130,30 @@ const rdFsNow = () => { const v = Number(lsGet('rd-fs')); return v >= RD_MIN && 
 function rdFs(v){ v = Math.max(RD_MIN, Math.min(RD_MAX, Math.round(v))); rd.doc.style.setProperty('--fs', v + 'px'); $('#rdSm').disabled = v <= RD_MIN; $('#rdLg').disabled = v >= RD_MAX; return v; }
 function rdStep(d){ const v = rdFs(rdFsNow() + d); lsSet('rd-fs', v); toast('글자 크기 ' + v, 1200); }
 $('#rdSm').onclick = () => rdStep(-1); $('#rdLg').onclick = () => rdStep(1);
+/* 전체 화면으로 읽기(번역 모드와 같은 방식): 머리 띠를 숨기고 글만. 글을 누르면 띠가 잠깐 글 위로, 글을 넘기면 들어간다.
+   브라우저의 전체 화면은 쓰지 않는다(켤 때마다 「전체 화면을 종료하려면…」 안내가 떠서). F 키로 켜고 끄고, Esc로 끈다 */
+function rdSetFull(on){
+  on = !!on;
+  if(on === rd.el.classList.contains('full')) return;
+  const p = rdPosNow();
+  rd.el.classList.toggle('full', on); rd.el.classList.remove('peek');
+  const b = $('#rdFull');
+  b.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-label', on ? '전체 화면 끝내기' : '전체 화면으로 읽기');
+  b.title = on ? '전체 화면 끝내기 (F·Esc)' : '전체 화면으로 읽기 (F)';
+  if(p) requestAnimationFrame(() => rdGoPos(p.pos));   // 띠가 사라지거나 나와도 읽던 자리 그대로
+  if(on && !lsGet('rd-full-tip')){ lsSet('rd-full-tip', 1); toast('글을 누르면 위 띠가 나옵니다', 2500); }   // 이 기기에서 처음 한 번만
+}
+$('#rdFull').onclick = e => { e.stopPropagation(); rdSetFull(!rd.el.classList.contains('full')); };
+rd.scroll.addEventListener('click', e => {
+  if(!rd.el.classList.contains('full')) return;
+  if(e.target.closest('button, a')) return;
+  const sel = getSelection(); if(sel && String(sel).trim()) return;   // 글을 고르는 중이면 그대로
+  rd.el.classList.toggle('peek');
+});
+let rdPeekY = 0;
+rd.scroll.addEventListener('scroll', () => { if(!rd.el.classList.contains('peek')){ rdPeekY = rd.scroll.scrollTop; return; } if(Math.abs(rd.scroll.scrollTop - rdPeekY) > 40) rd.el.classList.remove('peek'); }, {passive: true});
 function rdClose(){
+  rdSetFull(false);
   if(rd.libId){ rdSavePos(); const L = window.__lib; if(L) setTimeout(() => L.soon(1500), 300); }
   rdReset(); rd.el.hidden = true; if(!narrow()) paper.focus({preventScroll: true});
 }
@@ -913,7 +936,8 @@ $('#dvPdf').onclick = async () => { W.closePops(); if(!W.driveReady()) return; c
 window.addEventListener('keydown', e => {
   const reading = !rd.el.hidden, making = !$('#epubDlg').hidden;
   if(!reading && !making) return;
-  if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); if(making) closeEpub(); else rdClose(); return; }
+  if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); if(making) closeEpub(); else if(rd.el.classList.contains('full')) rdSetFull(false); else rdClose(); return; }
+  if(reading && !making && /^f$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); e.stopPropagation(); rdSetFull(!rd.el.classList.contains('full')); return; }
   if((e.ctrlKey || e.metaKey) && reading){   // 읽는 동안에는 편집 단축키가 원고에 닿지 않게. 찾기(Ctrl+F)는 브라우저 것을 쓴다
     if(/^f$/i.test(e.key)) e.stopPropagation();
     else if(e.key === 'Enter' || /^[szybi]$/i.test(e.key)){ e.preventDefault(); e.stopPropagation(); }

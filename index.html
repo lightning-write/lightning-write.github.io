@@ -459,8 +459,11 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 .tr-nav button{min-width:40px;font-size:16px!important}
 #trDlg{z-index:70}
 /* 전체 화면으로 읽기: 위·아래 띠를 숨기고 글만. 글을 누르면 띠가 잠깐 글 위로(peek) */
-#trFull .on-on,#trReader.full #trFull .on-off{display:none}
-#trReader.full #trFull .on-on{display:block}
+#trFull .on-on,#trReader.full #trFull .on-off,#rdFull .on-on,#reader.full #rdFull .on-off{display:none}
+#trReader.full #trFull .on-on,#reader.full #rdFull .on-on{display:block}
+#reader.full #rdHead{display:none}
+#reader.full.peek #rdHead{display:flex;position:absolute;top:0;left:0;right:0;z-index:6;box-shadow:0 2px 14px rgba(0,0,0,.12);padding-top:calc(8px + env(safe-area-inset-top,0px))}
+#reader.full #rdDoc{padding-top:max(28px,env(safe-area-inset-top,0px))}
 #trReader.full #trHead,#trReader.full #trBar,#trReader.full #trFoot,#trReader.full #trMsMenu{display:none}
 #trReader.full.peek #trHead,#trReader.full.peek #trFoot{display:flex;position:absolute;left:0;right:0;z-index:6;box-shadow:0 2px 14px rgba(0,0,0,.12)}
 #trReader.full.peek #trHead{top:0;padding-top:calc(8px + env(safe-area-inset-top,0px))}
@@ -832,7 +835,7 @@ button.danger:disabled{opacity:.4}
   </div>
 </div>
 <div id="reader" hidden role="dialog" aria-modal="true" aria-labelledby="rdName">
-  <header id="rdHead"><span id="rdBadge">읽기 모드</span><b id="rdName"></b><span id="rdInfo"></span><span id="rdSize" role="group" aria-label="글자 크기"><button id="rdSm" type="button" aria-label="글자 작게">가−</button><button id="rdLg" type="button" aria-label="글자 크게">가+</button></span><button id="rdClose" type="button">닫기</button></header>
+  <header id="rdHead"><span id="rdBadge">읽기 모드</span><b id="rdName"></b><span id="rdInfo"></span><span id="rdSize" role="group" aria-label="글자 크기"><button id="rdSm" type="button" aria-label="글자 작게">가−</button><button id="rdLg" type="button" aria-label="글자 크게">가+</button></span><button id="rdFull" class="icon" type="button" aria-pressed="false" aria-label="전체 화면으로 읽기" title="전체 화면으로 읽기 (F)"><svg class="on-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="on-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button><button id="rdClose" type="button">닫기</button></header>
   <div id="rdScroll" tabindex="0"><div id="rdDoc"></div></div>
 </div>
 
