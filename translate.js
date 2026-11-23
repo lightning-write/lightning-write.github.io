@@ -472,7 +472,6 @@ function setFull(on){
   $('#trFull').title = on ? '전체 화면 끝내기 (F·Esc)' : '전체 화면으로 읽기 (F)';
   closeMsMenu();
   if(pos) requestAnimationFrame(() => goPos(pos));   // 띠가 사라지거나 나와도 읽던 문단을 그대로
-  if(on && !lsGet('tr-full-tip')){ lsSet('tr-full-tip', 1); toast('글을 누르면 위·아래 띠가 나옵니다', 2500); }   // 이 기기에서 처음 한 번만
 }
 $('#trFull').onclick = e => { e.stopPropagation(); setFull(!reader.classList.contains('full')); };
 scroller.addEventListener('click', e => {
@@ -656,7 +655,6 @@ async function openFile(f){
     const rec = await L.trGet(id), m = await L.meta(id);
     if(reader.hidden) return;
     start(rec || Object.assign(src, {id, name: f.name, trTitle: '', tr: {}, ed: {}, fail: {}, tries: {}, ts: {}, gloss: '', glossAt: 0, all: false}), m && m.pos);
-    if(rec) toast('번역해 둔 데서 이어 갑니다 · ' + counts().pct + '%', 3000);
   }catch(e){
     if(reader.hidden) return;
     const msg = B.errText(e);

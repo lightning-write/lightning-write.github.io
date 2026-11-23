@@ -118,6 +118,7 @@ const rd = {el: $('#reader'), doc: $('#rdDoc'), scroll: $('#rdScroll'), urls: []
 function rdReset(){
   rd.token++;
   clearTimeout(rdPosT); rdPosT = null; rd.libId = null; rd.anchors = null; rd.pages = 0; rd.moved = false;
+  pg.cur = 0; pg.n = 1; pg.anchor = null; rd.scroll.scrollLeft = 0;
   if(rd.obs){ rd.obs.disconnect(); rd.obs = null; }
   if(rd.pdf){ pdfFree(rd.pdf); rd.pdf = null; }
   rd.urls.forEach(u => URL.revokeObjectURL(u)); rd.urls = [];
@@ -128,7 +129,7 @@ function rdReset(){
 const RD_MIN = 12, RD_MAX = 44;
 const rdFsNow = () => { const v = Number(lsGet('rd-fs')); return v >= RD_MIN && v <= RD_MAX ? v : (parseFloat(paper.style.getPropertyValue('--fs')) || 16); };
 function rdFs(v){ v = Math.max(RD_MIN, Math.min(RD_MAX, Math.round(v))); rd.doc.style.setProperty('--fs', v + 'px'); $('#rdSm').disabled = v <= RD_MIN; $('#rdLg').disabled = v >= RD_MAX; return v; }
-function rdStep(d){ const v = rdFs(rdFsNow() + d); lsSet('rd-fs', v); toast('글자 크기 ' + v, 1200); }
+function rdStep(d){ const v = rdFs(rdFsNow() + d); lsSet('rd-fs', v); rdRelayout(); toast('글자 크기 ' + v, 1200); }
 $('#rdSm').onclick = () => rdStep(-1); $('#rdLg').onclick = () => rdStep(1);
 /* 전체 화면으로 읽기(번역 모드와 같은 방식): 머리 띠를 숨기고 글만. 글을 누르면 띠가 잠깐 글 위로, 글을 넘기면 들어간다.
    브라우저의 전체 화면은 쓰지 않는다(켤 때마다 「전체 화면을 종료하려면…」 안내가 떠서). F 키로 켜고 끄고, Esc로 끈다 */
@@ -140,18 +141,101 @@ function rdSetFull(on){
   const b = $('#rdFull');
   b.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-label', on ? '전체 화면 끝내기' : '전체 화면으로 읽기');
   b.title = on ? '전체 화면 끝내기 (F·Esc)' : '전체 화면으로 읽기 (F)';
-  if(p) requestAnimationFrame(() => rdGoPos(p.pos));   // 띠가 사라지거나 나와도 읽던 자리 그대로
-  if(on && !lsGet('rd-full-tip')){ lsSet('rd-full-tip', 1); toast('글을 누르면 위 띠가 나옵니다', 2500); }   // 이 기기에서 처음 한 번만
+  if(p) pg.anchor = p.pos;   // 띠가 사라지거나 나와 화면 크기가 바뀌면 rdRelayout이 이 자리로 다시 맞춘다
+  rdRelayout();
 }
 $('#rdFull').onclick = e => { e.stopPropagation(); rdSetFull(!rd.el.classList.contains('full')); };
+/* ---- 쪽 넘기기(전자책 리더처럼): 글(EPUB·문서)은 화면 크기의 단(column)으로 한 장씩, PDF는 쪽마다 화면에 맞춰 옆으로 늘어놓는다.
+   왼쪽 30%를 누르거나 오른쪽으로 쓸면 앞 쪽, 오른쪽 30%를 누르거나 왼쪽으로 쓸면 다음 쪽, 가운데는 위 띠를 숨기고(전체 화면) 다시 보인다.
+   휠·←→·PageUp/Down·Space·Home/End도 쪽을 넘긴다. 지금 쪽은 pg.cur, 화면이 바뀔 때 되돌아갈 자리는 pg.anchor ---- */
+const pg = {stride: 0, n: 1, cur: 0, anchor: null};
+const reduceMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function rdDims(){
+  const sw = rd.scroll.clientWidth, sh = rd.scroll.clientHeight, small = sw < 620;
+  return {sw, sh, padX: small ? 20 : 48, padY: small ? 22 : 40};
+}
+function rdFitBox(b){
+  const {sw, sh, padX, padY} = rdDims(); if(!sw) return;
+  const ar = String(b.style.aspectRatio || '1 / 1.414').split('/').map(Number), ratio = ar[0] && ar[1] ? ar[0] / ar[1] : 0.707;
+  const w = Math.floor(Math.min(sw - padX * 2, (sh - padY * 2) * ratio));
+  b.style.width = w + 'px'; b.style.maxWidth = 'none'; b.style.margin = '0 ' + (sw - w) / 2 + 'px';
+}
+const pageOf = x => Math.floor((x - rd.scroll.getBoundingClientRect().left + rd.scroll.scrollLeft) / pg.stride + 0.002);
+function rdLayout(){
+  const {sw, sh, padX, padY} = rdDims(); if(!sw || !sh) return;
+  pg.stride = sw;
+  if(rd.pdf){ const bs = rd.doc.querySelectorAll('.pdf-page'); bs.forEach(rdFitBox); pg.n = Math.max(1, bs.length); }
+  else {
+    const colW = Math.min(720, sw - padX * 2), gap = sw - colW, d = rd.doc.style;
+    d.setProperty('--pg-w', colW + 'px'); d.setProperty('--pg-gap', gap + 'px'); d.setProperty('--pg-m', gap / 2 + 'px');
+    d.setProperty('--pg-h', Math.max(80, sh - padY * 2) + 'px'); d.setProperty('--pg-t', padY + 'px');
+    rd.anchors = null;
+    let n = Math.round(rd.scroll.scrollWidth / sw);
+    const last = rd.doc.lastElementChild;
+    if(last){ const rs = last.getClientRects(); if(rs.length) n = Math.max(n, pageOf(rs[rs.length - 1].left) + 1); }
+    pg.n = Math.max(1, n);
+  }
+  if(pg.cur > pg.n - 1) pg.cur = pg.n - 1;
+}
+function rdShow(k, smooth){
+  pg.cur = Math.max(0, Math.min(pg.n - 1, k));
+  const left = pg.cur * pg.stride;
+  if(smooth && !reduceMotion()) rd.scroll.scrollTo({left, behavior: 'smooth'}); else rd.scroll.scrollLeft = left;
+  if(!rd.el.hidden && (rd.pdf || rd.doc.querySelector(ANCH))) $('#rdInfo').textContent = (pg.cur + 1) + ' / ' + pg.n + '쪽';
+}
+/* 손으로 넘길 때: 쪽을 옮기고 그 쪽의 맨 앞 글을 기억 */
+function rdTurn(k){
+  rd.el.classList.remove('peek');
+  if(k < 0 || k > pg.n - 1){ rdShow(pg.cur, true); return; }
+  rdShow(k, true);
+  const p = rdPosNow(); if(p) pg.anchor = p.pos;
+}
+function rdRelayout(){
+  if(rd.el.hidden) return;
+  rdLayout();
+  if(pg.anchor) rdGoPos(pg.anchor); else rdShow(pg.cur, false);
+}
+let relayT = null;
+const rdRelayoutSoon = () => { clearTimeout(relayT); relayT = setTimeout(rdRelayout, 80); };
+new ResizeObserver(() => { if(!rd.el.hidden) rdRelayoutSoon(); }).observe(rd.scroll);
+rd.doc.addEventListener('load', e => { if(e.target.tagName === 'IMG') rdRelayoutSoon(); }, true);   // 그림이 들어오면 쪽이 바뀐다
+if(document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { if(!rd.el.hidden) rdRelayoutSoon(); });
+// 누르기: 왼쪽 30% 앞 쪽, 오른쪽 30% 다음 쪽, 가운데는 띠
 rd.scroll.addEventListener('click', e => {
-  if(!rd.el.classList.contains('full')) return;
   if(e.target.closest('button, a')) return;
   const sel = getSelection(); if(sel && String(sel).trim()) return;   // 글을 고르는 중이면 그대로
-  rd.el.classList.toggle('peek');
+  const r = rd.scroll.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+  if(x < 0.3) rdTurn(pg.cur - 1);
+  else if(x > 0.7) rdTurn(pg.cur + 1);
+  else if(!rd.el.classList.contains('full')) rdSetFull(true);
+  else rd.el.classList.toggle('peek');
 });
-let rdPeekY = 0;
-rd.scroll.addEventListener('scroll', () => { if(!rd.el.classList.contains('peek')){ rdPeekY = rd.scroll.scrollTop; return; } if(Math.abs(rd.scroll.scrollTop - rdPeekY) > 40) rd.el.classList.remove('peek'); }, {passive: true});
+// 쓸기: 손가락을 따라 옆으로 움직이다가, 충분히 쓸었으면 다음·앞 쪽으로, 아니면 제자리로
+let sw0 = null;
+rd.scroll.addEventListener('touchstart', e => { if(e.touches.length !== 1){ sw0 = null; return; } const t = e.touches[0]; sw0 = {x: t.clientX, y: t.clientY, t: Date.now(), left: pg.cur * pg.stride, moved: false}; }, {passive: true});
+rd.scroll.addEventListener('touchmove', e => {
+  if(!sw0 || e.touches.length !== 1) return;
+  const t = e.touches[0], dx = t.clientX - sw0.x, dy = t.clientY - sw0.y;
+  if(!sw0.moved && Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+  sw0.moved = true;
+  if(Math.abs(dx) > Math.abs(dy)) rd.scroll.scrollLeft = sw0.left - dx;
+}, {passive: true});
+rd.scroll.addEventListener('touchend', e => {
+  const s = sw0; sw0 = null; if(!s || !s.moved) return;   // 누르기는 click에서
+  const t = e.changedTouches[0], dx = t.clientX - s.x, dy = t.clientY - s.y, v = Math.abs(dx) / Math.max(1, Date.now() - s.t);
+  if(Math.abs(dx) > Math.abs(dy) && (Math.abs(dx) > pg.stride * 0.18 || v > 0.35)) rdTurn(pg.cur + (dx < 0 ? 1 : -1));
+  else rdShow(pg.cur, true);
+}, {passive: true});
+rd.scroll.addEventListener('touchcancel', () => { if(sw0 && sw0.moved) rdShow(pg.cur, true); sw0 = null; }, {passive: true});
+// 휠: 한 번 굴리면 한 쪽
+let wheelAt = 0;
+rd.scroll.addEventListener('wheel', e => {
+  if(e.ctrlKey) return;   // 화면 확대는 브라우저에
+  e.preventDefault();
+  const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX, now = Date.now();
+  if(Math.abs(d) < 4 || now - wheelAt < 380) return;
+  wheelAt = now; rdTurn(pg.cur + (d > 0 ? 1 : -1));
+}, {passive: false});
 function rdClose(){
   rdSetFull(false);
   if(rd.libId){ rdSavePos(); const L = window.__lib; if(L) setTimeout(() => L.soon(1500), 300); }
@@ -162,22 +246,28 @@ const ANCH = 'p,h1,h2,h3,h4,h5,h6,li,pre,dt,dd,td,th,figcaption,img';
 let rdPosT = null;
 function rdMarks(){ return rd.pdf ? [...rd.doc.querySelectorAll('.pdf-page')] : (rd.anchors || (rd.anchors = [...rd.doc.querySelectorAll(ANCH)])); }
 function rdPosNow(){
-  const ms = rdMarks(); if(!ms.length) return null;
-  const top = rd.scroll.getBoundingClientRect().top;
-  let lo = 0, hi = ms.length - 1;
-  while(lo < hi){ const m = (lo + hi + 1) >> 1; if(ms[m].getBoundingClientRect().top <= top + 2) lo = m; else hi = m - 1; }
-  const r = ms[lo].getBoundingClientRect(), f = r.height ? Math.round(Math.max(0, Math.min(1, (top - r.top) / r.height)) * 1000) / 1000 : 0;
-  if(rd.pdf) return {pos: {pg: lo + 1, f}, pct: Math.round((lo + 1) / ms.length * 100), pages: ms.length};
-  if(rd.scroll.scrollTop < 20) return {pos: {a: -1}, pct: 0};
-  return {pos: {a: lo, f}, pct: Math.round(lo / ms.length * 100)};
+  const ms = rdMarks(); if(!ms.length || !pg.stride) return null;
+  const cur = pg.cur;
+  if(rd.pdf) return {pos: {pg: cur + 1, f: 0}, pct: Math.round((cur + 1) / ms.length * 100), pages: ms.length};
+  if(cur === 0) return {pos: {a: -1}, pct: 0};
+  const lastPage = el => { const rs = el.getClientRects(); return rs.length ? pageOf(rs[rs.length - 1].left) : -1; };
+  let lo = 0, hi = ms.length - 1;   // 끝이 지금 쪽이거나 그 뒤인 첫 글 = 이 쪽 맨 위에 보이는 글
+  while(lo < hi){ const m = (lo + hi) >> 1; if(lastPage(ms[m]) >= cur) hi = m; else lo = m + 1; }
+  const pages = [...new Set([...ms[lo].getClientRects()].map(r => pageOf(r.left)))].sort((a, b) => a - b);
+  const idx = Math.max(0, pages.indexOf(cur));
+  return {pos: {a: lo, f: pages.length > 1 ? Math.round(idx / pages.length * 1000) / 1000 : 0}, pct: Math.round(cur / pg.n * 100)};
 }
+/* 적어 둔 자리로: 글이 여러 쪽에 걸쳐 있으면 f(몇 번째 조각쯤)로 그 쪽을 고른다 */
 function rdGoPos(p){
   if(!p) return false;
-  if(p.a === -1){ rd.scroll.scrollTop = 0; return false; }
-  const ms = rdMarks(), el = ms[rd.pdf ? (p.pg || 1) - 1 : p.a];
-  if(!el) return false;
-  const r = el.getBoundingClientRect(), top = rd.scroll.getBoundingClientRect().top;
-  rd.scroll.scrollTop += r.top - top + (p.f || 0) * r.height;
+  if(!pg.stride) rdLayout();
+  pg.anchor = p;
+  if(rd.pdf){ rdShow((p.pg || 1) - 1, false); return (p.pg || 1) > 1; }
+  if(p.a === -1 || p.a == null){ rdShow(0, false); return false; }
+  const el = rdMarks()[p.a]; if(!el){ rdShow(0, false); return false; }
+  const pages = [...new Set([...el.getClientRects()].map(r => pageOf(r.left)))].sort((a, b) => a - b);
+  if(!pages.length){ rdShow(0, false); return false; }
+  rdShow(pages[Math.min(pages.length - 1, Math.floor((p.f || 0) * pages.length + 0.001))], false);
   return true;
 }
 function rdSavePos(){
@@ -187,7 +277,7 @@ function rdSavePos(){
 }
 rd.scroll.addEventListener('scroll', () => { if(!rd.libId || rdPosT) return; rdPosT = setTimeout(() => { rdPosT = null; rdSavePos(); }, 700); });
 for(const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) rd.scroll.addEventListener(ev, () => { rd.moved = true; }, {passive: true});
-/* 서재에 두고, 읽던 자리가 있으면 그리로 간다. 그림이 늦게 들어와 자리가 밀리면 손대기 전까지 한 번 더 맞춘다 */
+/* 서재에 두고, 읽던 자리가 있으면 그 쪽을 연다 */
 async function rdRemember(f, token, info){
   const L = window.__lib; if(!L) return;
   try{
@@ -196,14 +286,7 @@ async function rdRemember(f, token, info){
     rd.libId = id;
     const m = await L.meta(id);
     if(rd.token !== token) return;
-    if(m && m.pos && !rd.moved && rdGoPos(m.pos)){
-      toast(rd.pdf ? '읽던 자리(' + (m.pos.pg || 1) + '쪽)에서 이어 읽습니다' : '읽던 자리에서 이어 읽습니다', 2500);
-      const imgs = [...rd.doc.querySelectorAll('img')].filter(i => !i.complete);
-      if(imgs.length){
-        await Promise.race([Promise.all(imgs.map(i => new Promise(r => { i.addEventListener('load', r, {once: true}); i.addEventListener('error', r, {once: true}); }))), new Promise(r => setTimeout(r, 4000))]);
-        if(rd.token === token && !rd.moved){ rd.anchors = null; rdGoPos(m.pos); }
-      }
-    } else rdSavePos();
+    if(!(m && m.pos && !rd.moved && rdGoPos(m.pos))) rdSavePos();   // 그림이 늦게 들어와 쪽이 바뀌면 rdRelayout이 이 자리로 다시 맞춘다
   }catch(e){}
 }
 $('#rdClose').onclick = rdClose;
@@ -214,7 +297,9 @@ function rdOpen(name){
   rdFs(rdFsNow());
   $('#rdSize').hidden = false;
   rd.doc.innerHTML = '<p class="rd-wait">여는 중…</p>';
+  rd.el.classList.add('paged');
   rd.el.hidden = false; rd.scroll.scrollTop = 0; rd.scroll.focus({preventScroll: true});
+  rdLayout();
   if(narrow()) $('#app').classList.remove('drawer');
   return rd.token;
 }
@@ -572,6 +657,7 @@ async function rdPdf(f, token){
     const page = await pdf.getPage(+b.dataset.n); if(rd.token !== token || b.firstChild) return;
     const v = page.getViewport({scale: 1});
     b.style.aspectRatio = v.width + ' / ' + v.height;
+    rdFitBox(b);
     const scale = Math.min(3, (b.clientWidth || 600) / v.width * Math.min(2, window.devicePixelRatio || 1));
     const vp = page.getViewport({scale}), cv = document.createElement('canvas');
     cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
@@ -585,15 +671,8 @@ async function rdPdf(f, token){
       const c = x.firstChild; if(c){ c.width = 0; c.remove(); }
     }
   }
-  rd.obs = new IntersectionObserver(es => { for(const e of es) if(e.isIntersecting){ const b = e.target; chain = chain.then(() => render(b)); } }, {root: rd.scroll, rootMargin: '600px 0px'});
+  rd.obs = new IntersectionObserver(es => { for(const e of es) if(e.isIntersecting){ const b = e.target; chain = chain.then(() => render(b)); } }, {root: rd.scroll, rootMargin: '100% 100%'});
   boxes.forEach(b => rd.obs.observe(b));
-  const info = () => {
-    const mid = rd.scroll.scrollTop + rd.scroll.clientHeight / 2; let lo = 0, hi = boxes.length - 1;
-    while(lo < hi){ const m = (lo + hi + 1) >> 1; if(boxes[m].offsetTop <= mid) lo = m; else hi = m - 1; }
-    $('#rdInfo').textContent = (lo + 1) + ' / ' + n + '쪽';
-  };
-  let t = null; rd.scroll.onscroll = () => { if(t) return; t = setTimeout(() => { t = null; info(); }, 120); };
-  info();
 }
 async function readFile(f, shown, opt){
   opt = opt || {};
@@ -615,7 +694,9 @@ async function readFile(f, shown, opt){
     rd.doc.innerHTML = '<p class="rd-wait"></p>'; rd.doc.firstChild.textContent = errText(e);
     return;
   }
-  if(rd.token === token) await rdRemember(f, token, {id: opt.libId, title, kind});
+  if(rd.token !== token) return;
+  rdLayout(); rdShow(0, false);
+  await rdRemember(f, token, {id: opt.libId, title, kind});
 }
 async function isEpub(f){
   try{ const z = await Hangul.unzip(await f.arrayBuffer()); const m = await z.text('mimetype'); return !!m && m.trim() === 'application/epub+zip'; }catch(e){ return false; }
@@ -938,6 +1019,10 @@ window.addEventListener('keydown', e => {
   if(!reading && !making) return;
   if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); if(making) closeEpub(); else if(rd.el.classList.contains('full')) rdSetFull(false); else rdClose(); return; }
   if(reading && !making && /^f$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); e.stopPropagation(); rdSetFull(!rd.el.classList.contains('full')); return; }
+  if(reading && !making && !e.ctrlKey && !e.metaKey && !e.altKey){   // 쪽 넘기기
+    const k = e.key, next = k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || (k === ' ' && !e.shiftKey), prev = k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp' || (k === ' ' && e.shiftKey);
+    if(next || prev || k === 'Home' || k === 'End'){ e.preventDefault(); e.stopPropagation(); rdTurn(k === 'Home' ? 0 : k === 'End' ? pg.n - 1 : pg.cur + (next ? 1 : -1)); return; }
+  }
   if((e.ctrlKey || e.metaKey) && reading){   // 읽는 동안에는 편집 단축키가 원고에 닿지 않게. 찾기(Ctrl+F)는 브라우저 것을 쓴다
     if(/^f$/i.test(e.key)) e.stopPropagation();
     else if(e.key === 'Enter' || /^[szybi]$/i.test(e.key)){ e.preventDefault(); e.stopPropagation(); }
