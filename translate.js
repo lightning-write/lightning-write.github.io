@@ -440,11 +440,19 @@ function layout(){
   pg.stride = sw;
   d.setProperty('--pg-w', colW + 'px'); d.setProperty('--pg-gap', gap + 'px'); d.setProperty('--pg-m', gap / 2 + 'px');
   d.setProperty('--pg-h', Math.max(80, sh - padY * 2) + 'px'); d.setProperty('--pg-t', padY + 'px');
+  const sp = spacer(scroller); sp.style.width = '0px';
   let n = Math.round(scroller.scrollWidth / sw);
   const last = doc.lastElementChild;
   if(last){ const rs = last.getClientRects(); if(rs.length) n = Math.max(n, pageOf(rs[rs.length - 1].left) + 1); }
   pg.n = Math.max(1, n);
+  sp.style.width = pg.n * sw + 'px';   // 마지막 쪽도 끝까지 넘길 수 있게(글 끝이 쪽 끝보다 짧아 오른쪽으로 밀리던 것)
   if(pg.cur > pg.n - 1) pg.cur = pg.n - 1;
+}
+/* 넘길 수 있는 폭을 쪽 수 × 화면폭으로 맞추는 빈 막대(단의 글은 쪽 끝 여백까지 닿지 않는다) */
+function spacer(sc){
+  let sp = sc.querySelector(':scope > .pg-spacer');
+  if(!sp){ sp = document.createElement('div'); sp.className = 'pg-spacer'; sp.setAttribute('aria-hidden', 'true'); sc.appendChild(sp); }
+  return sp;
 }
 function show(k, smooth){
   pg.cur = Math.max(0, Math.min(pg.n - 1, k));

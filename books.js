@@ -164,6 +164,9 @@ const pageOf = x => Math.floor((x - rd.scroll.getBoundingClientRect().left + rd.
 function rdLayout(){
   const {sw, sh, padX, padY} = rdDims(); if(!sw || !sh) return;
   pg.stride = sw;
+  let sp = rd.scroll.querySelector(':scope > .pg-spacer');   // 넘길 수 있는 폭 = 쪽 수 × 화면폭(마지막 쪽이 오른쪽으로 밀리지 않게)
+  if(!sp){ sp = document.createElement('div'); sp.className = 'pg-spacer'; sp.setAttribute('aria-hidden', 'true'); rd.scroll.appendChild(sp); }
+  sp.style.width = '0px';
   if(rd.pdf){ const bs = rd.doc.querySelectorAll('.pdf-page'); bs.forEach(rdFitBox); pg.n = Math.max(1, bs.length); }
   else {
     const colW = Math.min(720, sw - padX * 2), gap = sw - colW, d = rd.doc.style;
@@ -175,6 +178,7 @@ function rdLayout(){
     if(last){ const rs = last.getClientRects(); if(rs.length) n = Math.max(n, pageOf(rs[rs.length - 1].left) + 1); }
     pg.n = Math.max(1, n);
   }
+  sp.style.width = pg.n * sw + 'px';
   if(pg.cur > pg.n - 1) pg.cur = pg.n - 1;
 }
 function rdShow(k, smooth){

@@ -465,7 +465,7 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #reader.full.peek #rdHead{display:flex;position:absolute;top:0;left:0;right:0;z-index:6;box-shadow:0 2px 14px rgba(0,0,0,.12);padding-top:calc(8px + env(safe-area-inset-top,0px))}
 #reader.full #rdDoc{padding-top:max(28px,env(safe-area-inset-top,0px))}
 /* 읽기 모드 쪽 넘기기: 글은 화면 크기의 단(column)으로, PDF 쪽은 옆으로 늘어놓고 scrollLeft로 한 장씩 */
-#reader.paged #rdScroll{overflow:hidden;padding:0;touch-action:none;overscroll-behavior:none}
+#reader.paged #rdScroll{overflow:hidden;padding:0;touch-action:none;overscroll-behavior:none;position:relative}
 #reader.paged #rdDoc:not(.pdf){max-width:none;width:var(--pg-w,auto);height:var(--pg-h,auto);margin:var(--pg-t,24px) 0 0 var(--pg-m,20px);padding:0;column-width:var(--pg-w,auto);column-gap:var(--pg-gap,40px);column-fill:auto}
 #reader.paged #rdDoc img{max-height:calc(var(--pg-h,80vh) - 2em);width:auto;max-width:100%;break-inside:avoid}
 #reader.paged #rdDoc .chap,#reader.paged #rdDoc h1,#reader.paged #rdDoc h2,#reader.paged #rdDoc h3,#reader.paged #rdDoc h4{break-after:avoid}
@@ -474,7 +474,8 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #reader.paged #rdDoc.pdf{display:flex;align-items:center;flex-wrap:nowrap;max-width:none;width:max-content;height:100%;margin:0;padding:0}
 #reader.paged .pdf-page{flex:none;box-shadow:0 1px 8px rgba(0,0,0,.2)}
 /* 번역 모드도 쪽 넘기기 */
-#trReader.paged #trScroll{overflow:hidden;padding:0;touch-action:none;overscroll-behavior:none}
+#trReader.paged #trScroll{overflow:hidden;padding:0;touch-action:none;overscroll-behavior:none;position:relative}
+.pg-spacer{position:absolute;left:0;top:0;height:1px;pointer-events:none;visibility:hidden}
 #trReader.paged #trDoc{max-width:none;width:var(--pg-w,auto);height:var(--pg-h,auto);margin:var(--pg-t,24px) 0 0 var(--pg-m,20px);padding:0;column-width:var(--pg-w,auto);column-gap:var(--pg-gap,40px);column-fill:auto}
 #trReader.paged #trDoc .tp.c{break-after:avoid}
 #trReader.paged .tr-end{break-inside:avoid}
