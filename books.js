@@ -355,6 +355,13 @@ function cssFile(z, path, memo, depth){
   if(!memo.has(path)) memo.set(path, z.text(path).then(t => t == null ? {b: [], a: []} : cssBreaks(z, t, path, memo, depth)));
   return memo.get(path);
 }
+async function fileBreaks(z, body, href, memo){
+  const dom = body.ownerDocument, rules = [], brk = {b: new Set(), a: new Set()};
+  for(const l of dom.getElementsByTagNameNS('*', 'link')) if(/stylesheet/i.test(l.getAttribute('rel') || '') && !/alternate/i.test(l.getAttribute('rel'))) rules.push(cssFile(z, resolvePath(href, l.getAttribute('href')), memo, 0));
+  for(const st of dom.getElementsByTagNameNS('*', 'style')) rules.push(cssBreaks(z, st.textContent, href, memo, 0));
+  for(const r of await Promise.all(rules)) for(const k of ['b', 'a']) for(const sel of r[k]){ try{ for(const e of body.querySelectorAll(sel)) brk[k].add(e); }catch(e){} }
+  return brk;
+}
 /* 나눔이 둘 겹치거나 앞뒤에 글이 없으면 빈 쪽이 생기므로, 글·그림 사이에 있는 나눔만 남긴다 */
 function tidyBreaks(root){
   let seen = false, pend = null, lastB = null; const open = [];
@@ -421,7 +428,35 @@ async function epubPkg(f){
     if(spine.some(s => locked.has(s.it.href))) throw new Error('epub_drm');
   }
   const meta = tag => { const e = opf.getElementsByTagNameNS('*', tag)[0]; return e ? e.textContent.replace(/\s+/g, ' ').trim() : ''; };
-  return {z, XP, spine, title: meta('title'), author: meta('creator'), lang: meta('language')};
+  return {z, XP, spine, opf, items, title: meta('title'), author: meta('creator'), lang: meta('language')};
+}
+/* 책의 차례(목차): EPUB3 nav(epub:type="toc")가 둘 넘게 가리키면 그것, 아니면 EPUB2 NCX → [{file, frag, label}] 읽는 순서대로 */
+async function epubToc(pkg){
+  const {z, XP, opf, items} = pkg, out = [];
+  const push = (base, href, label) => {
+    if(!href) return; const file = resolvePath(base, href); if(!file) return;
+    let frag = String(href).split('#')[1] || ''; try{ frag = decodeURIComponent(frag); }catch(e){}
+    out.push({file, frag, label: String(label || '').replace(/\s+/g, ' ').trim()});
+  };
+  try{
+    const nav = [...items.values()].find(it => /\bnav\b/.test(it.props)), t = nav && await z.text(nav.href);
+    if(t){
+      const d = spineDoc(XP, t).ownerDocument, navs = [...d.getElementsByTagNameNS('*', 'nav')];
+      const toc = navs.find(n => /\btoc\b/.test(n.getAttributeNS('http://www.idpf.org/2007/ops', 'type') || n.getAttribute('epub:type') || '')) || navs[0];
+      if(toc) for(const a of toc.getElementsByTagNameNS('*', 'a')) push(nav.href, a.getAttribute('href'), a.textContent);
+    }
+    if(out.length < 2){
+      out.length = 0;
+      const sp = opf.getElementsByTagNameNS('*', 'spine')[0], tid = sp && sp.getAttribute('toc');
+      const ncx = (tid && items.get(tid)) || [...items.values()].find(it => /dtbncx/.test(it.type)), x = ncx && await z.text(ncx.href);
+      if(x) for(const np of XP.parseFromString(x, 'application/xml').getElementsByTagNameNS('*', 'navPoint')){
+        const kid = name => [...np.childNodes].find(c => c.localName === name);
+        const lab = kid('navLabel'), con = kid('content');
+        push(ncx.href, con && con.getAttribute('src'), lab && lab.textContent);
+      }
+    }
+  }catch(e){ return []; }
+  return out;
 }
 const spineDoc = (XP, text) => {
   let d = XP.parseFromString(text, 'application/xhtml+xml');
@@ -474,13 +509,8 @@ async function rdEpub(f, token){
   for(const s of spine){
     if(!s.linear || /\bnav\b/.test(s.it.props)) continue;
     const text = await z.text(s.it.href); if(text == null) continue;
-    const body = spineDoc(XP, text), dom = body.ownerDocument;
-    // 이 파일에 걸린 책 CSS(link·style)의 새 쪽 규칙을 원래 요소에 표시해 둔다
-    brk = {b: new Set(), a: new Set()};
-    const rules = [];
-    for(const l of dom.getElementsByTagNameNS('*', 'link')) if(/stylesheet/i.test(l.getAttribute('rel') || '') && !/alternate/i.test(l.getAttribute('rel'))) rules.push(cssFile(z, resolvePath(s.it.href, l.getAttribute('href')), memo, 0));
-    for(const st of dom.getElementsByTagNameNS('*', 'style')) rules.push(cssBreaks(z, st.textContent, s.it.href, memo, 0));
-    for(const r of await Promise.all(rules)) for(const k of ['b', 'a']) for(const sel of r[k]){ try{ for(const e of body.querySelectorAll(sel)) brk[k].add(e); }catch(e){} }
+    const body = spineDoc(XP, text);
+    brk = await fileBreaks(z, body, s.it.href, memo);   // 이 파일에 걸린 책 CSS(link·style)의 새 쪽 규칙을 원래 요소에 표시해 둔다
     const part = document.createElement('div'); part.className = 'rd-part';
     await clean(body, part, s.it.href);
     if(rd.token !== token) return;
@@ -503,6 +533,12 @@ const SKIP = new Set(['img', 'image', 'svg', 'math', 'rt', 'rp']);
 const PG_START = /\*{3}\s*START OF (THE|THIS) PROJECT GUTENBERG/i, PG_END = /\*{3}\s*END OF (THE|THIS) PROJECT GUTENBERG/i;
 async function epubBook(f){
   const pkg = await epubPkg(f), paras = [];
+  // 장 시작(k): 책 차례가 가리키는 자리. 쓸 만한 차례가 없으면 파일 첫머리와 책 CSS의 새 쪽 규칙.
+  // 문단을 나누는 방식·글은 바꾸지 않는다(번역 모드의 책 번호가 글로 정해지므로)
+  const lin = new Set(pkg.spine.filter(s => s.linear && !/\bnav\b/.test(s.it.props)).map(s => s.it.href));
+  const toc = (await epubToc(pkg)).filter(e => lin.has(e.file)), useToc = toc.length >= 2, memo = new Map();
+  let pend = null, tg = null, brkB = null;
+  const mark = lab => { if(!pend) pend = []; if(lab && !pend.includes(lab)) pend.push(lab); };
   let cur = null;
   const end = () => {
     if(!cur) return;
@@ -513,7 +549,11 @@ async function epubBook(f){
     cur = null;
   };
   const add = (t, c) => {
-    if(!cur){ if(!t.trim()) return; cur = {runs: [], chap: !!c.h, lv: c.h || 0, sep: false, pg: c.pg}; t = t.replace(/^\s+/, ''); }
+    if(!cur){
+      if(!t.trim()) return;
+      cur = {runs: [], chap: !!c.h, lv: c.h || 0, sep: false, pg: c.pg}; t = t.replace(/^\s+/, '');
+      if(pend){ cur.k = 1; if(pend.length) cur.kt = pend.join(' ').slice(0, 120); pend = null; }
+    }
     const l = cur.runs[cur.runs.length - 1];
     if(l && l.b === c.b && l.i === c.i) l.t += t; else cur.runs.push({t, b: c.b, i: c.i});
   };
@@ -530,6 +570,8 @@ async function epubBook(f){
       if(tag === 'br'){ if(c.h) add(' ', c); else end(); continue; }
       if(tag === 'hr'){ end(); paras.push({runs: [{t: '* * *', b: false, i: false}], chap: false, lv: 0, sep: true, pg: c.pg}); continue; }
       const id = n.getAttribute('id') || '', cls = n.getAttribute('class') || '';
+      if(tg){ const ls = (id && tg.get(id)) || (n.getAttribute('name') && tg.get(n.getAttribute('name'))); if(ls) ls.forEach(mark); }
+      if(brkB && (brkB.has(n) || BRK_B.test(';' + (n.getAttribute('style') || '')))) mark('');
       const k = Object.assign({}, c);
       if(/\b(pagenum|pageno|page-?number)\b/i.test(cls)) continue;   // 종이책 쪽 번호 표시는 버린다
       if(/^pg-(header|footer)/i.test(id) || /\bpg-boilerplate\b/i.test(cls)) k.pg = true;
@@ -543,7 +585,15 @@ async function epubBook(f){
   for(const s of pkg.spine){
     if(!s.linear || /\bnav\b/.test(s.it.props)) continue;
     const text = await pkg.z.text(s.it.href); if(text == null) continue;
-    walk(spineDoc(pkg.XP, text), {b: false, i: false, h: 0, pre: false, pg: false});
+    const body = spineDoc(pkg.XP, text);
+    if(useToc){
+      tg = new Map();
+      for(const e of toc) if(e.file === s.it.href){
+        if(!e.frag || e.frag === body.getAttribute('id')) mark(e.label);
+        else { if(!tg.has(e.frag)) tg.set(e.frag, []); tg.get(e.frag).push(e.label); }
+      }
+    } else { mark(''); brkB = (await fileBreaks(pkg.z, body, s.it.href, memo)).b; }
+    walk(body, {b: false, i: false, h: 0, pre: false, pg: false});
     end();
   }
   // 옛 구텐베르크 책: '*** START OF …' 앞과 '*** END OF …' 뒤가 안내·약관 글
@@ -561,6 +611,24 @@ async function epubBook(f){
     out.push(p);
   }
   if(!out.length) throw new Error('empty');
+  if(!useToc){
+    // 차례 없이 파일·CSS로 짐작한 장: 제목 태그로 장이 나뉘는 책은 그것만 쓰고(파일 경계가 장 중간일 수 있다),
+    // 아니면 장 첫 문단이 짧고 문장 같지 않으면(끝에 마침표·따옴표 없음) 장 제목으로
+    if(out.some(p => p.chap)) out.forEach(p => { delete p.k; });
+    else out.forEach(p => { if(!p.k || p.sep) return; const t = paraText(p).trim(); if(t.length <= 50 && !/[.!?,;:…”"’)\]]$/.test(t) && !/^[“"‘'(\[]/.test(t)) p.h = 1; });
+  }
+  // 차례 이름과 글이 같은 짧은 문단(제목 태그가 아닌 장 제목, 「CHAPTER I.」 + 「Down the Rabbit-Hole」처럼 둘로 나뉜 것도)은 h
+  const norm = t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  out.forEach((p, i) => {
+    if(!p.k || !p.kt) return;
+    let rest = norm(p.kt);
+    for(let j = i; j < out.length && j < i + 3; j++){
+      const q = out[j]; if(j > i && q.k) break;
+      const raw = paraText(q).trim(), t = norm(raw);
+      if(q.sep || !t || raw.length > 120 || !rest.includes(t)) break;
+      q.h = 1; rest = rest.replace(t, '');
+    }
+  });
   return {title: pkg.title || stemOf(f.name), author: pkg.author, lang: pkg.lang, paras: out};
 }
 async function isEpubFile(f){

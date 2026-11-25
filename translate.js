@@ -73,6 +73,13 @@ const ROMAN = /^[IVXLCDM]{1,8}\.?$/;
 const SEP_RE = /^[\s*.\-–—~#•·=＊]+$/;
 const isSepText = t => !!t.trim() && SEP_RE.test(t) && /[*#~=•·＊]/.test(t) && t.replace(/\s/g, '').length <= 20;
 const headish = t => t.length <= 80 && (HEAD_RE.test(t) || ROMAN.test(t.trim()));
+const RMN = '(?=[ivxlcdm])m{0,4}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})';   // 로마 숫자 꼴만
+const NUMW = '(?:\\d{1,3}|' + RMN + '|(?:the\\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last))';
+const TAIL = '(?:\\s*[.:\\-–—]+(?:\\s*\\S.*)?)?$';   // 「CHAPTER I.」「Chapter One: The Boy」 — 번호 뒤에 바로 글이 이어지면(문장) 제목이 아니다
+const TITLE_RE = new RegExp('^(?:(?:chapter|book|part|volume|stave|canto|letter|chapitre|kapitel|cap[ií]tulo|capitolo)\\s+' + NUMW + '|prologue|epilogue|preface|introduction|afterword|foreword)' + TAIL, 'i');
+const NUM_LINE = new RegExp('^(?:\\d{1,3}|' + RMN.toUpperCase().replace('(?=[IVXLCDM])', '(?=[IVXLCDM])') + ')\\.?$');
+const titleLine = t => { t = t.trim(); return t.length <= 60 && (TITLE_RE.test(t) || NUM_LINE.test(t)); };
+const marked = ps => ps.some(p => p.c || p.h || p.k);
 /* 구텐베르크 TXT: 한 문단이 70자쯤에서 줄이 바뀌어 있다. 빈 줄로 나뉜 덩어리를 한 문단으로 잇는다. _기울임_도 살린다 */
 function txtBook(text, name){
   text = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
@@ -103,8 +110,16 @@ async function loadSource(f){
     return {title: bk.title, author: '', lang: 'en', paras: bk.paras.map(p => { const t = B.paraText(p).trim(); return p.sep || isSepText(t) ? {m: '* * *', c: 0, s: 1} : {m: toMarkup(p.runs), c: p.chap || headish(t) ? 1 : 0, s: 0}; }).filter(p => p.s || p.m)};
   }
   if(kind === 'zip' && await B.isEpubFile(f)){
-    const bk = await B.epubBook(f);
-    const paras = bk.paras.filter(p => !p.pg).map(p => ({m: p.sep ? '* * *' : toMarkup(p.runs), c: p.chap ? 1 : 0, s: p.sep ? 1 : 0})).filter(p => p.s || p.m);
+    const bk = await B.epubBook(f), paras = [];
+    let carry = null;   // 건너뛴 문단(구텐베르크 안내 등)에 걸린 장 시작은 다음 문단으로
+    for(const p of bk.paras){
+      const q = p.pg ? null : {m: p.sep ? '* * *' : toMarkup(p.runs), c: p.chap ? 1 : 0, s: p.sep ? 1 : 0};
+      if(!q || !(q.s || q.m)){ if(p.k && !carry) carry = p; continue; }
+      const k = p.k ? p : carry; carry = null;
+      if(k){ q.k = 1; if(k.kt) q.kt = k.kt; }
+      if(p.h) q.h = 1;
+      paras.push(q);
+    }
     return {title: bk.title, author: bk.author, lang: (bk.lang || 'en').toLowerCase(), paras};
   }
   if(kind === 'text'){
@@ -123,18 +138,24 @@ async function hashOf(src){
     return 'b' + [...h.slice(0, 12)].map(b => b.toString(16).padStart(2, '0')).join('');
   }catch(e){ let h = 0; for(let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 2654435761) >>> 0; return 'b' + h.toString(16) + s.length.toString(16); }
 }
-/* 장 나누기: 장 제목 줄에서 새 장. 잇달아 나온 제목 줄(PART ONE + CHAPTER 1 + 부제)은 한 장의 제목으로 묶는다.
-   제목이 하나도 없는 긴 글은 1만 5천 자쯤마다 '구간'으로 나눈다 */
+/* 장 나누기: 장 제목 줄(c: 제목 태그, h: 차례 이름과 같은 문단·제목다운 줄)과 장 시작(k: 책 차례가 가리키는 자리)에서 새 장.
+   잇달아 나온 제목 줄(PART ONE + CHAPTER 1 + 부제)은 한 장의 제목으로 묶는다. 장 이름은 제목 줄, 없으면 차례 이름.
+   제목도 장 시작도 없는 긴 글은 1만 5천 자쯤마다 '구간'으로 나눈다 */
 function chaptersOf(paras){
   const chs = []; let cur = null, head = false;
   paras.forEach((p, i) => {
-    if(p.c){
-      if(cur && head){ cur.b = i + 1; cur.t = (cur.t + ' ' + plain(p.m)).trim(); return; }
-      cur = {a: i, b: i + 1, t: plain(p.m)}; chs.push(cur); head = true; return;
+    const isH = !!(p.c || p.h);
+    if(isH || p.k){
+      if(cur && head){   // 제목 줄만 있던 장에 이어 붙인다
+        cur.b = i + 1; if(isH) cur.ht = (cur.ht + ' ' + plain(p.m)).trim(); if(p.kt && !cur.lt) cur.lt = p.kt;
+        head = isH; return;
+      }
+      cur = {a: i, b: i + 1, ht: isH ? plain(p.m) : '', lt: p.kt || ''}; chs.push(cur); head = isH; return;
     }
-    if(!cur){ cur = {a: i, b: i + 1, t: ''}; chs.push(cur); }
+    if(!cur){ cur = {a: i, b: i + 1, ht: '', lt: ''}; chs.push(cur); }
     cur.b = i + 1; head = false;
   });
+  for(const c of chs){ c.t = c.ht || c.lt; delete c.ht; delete c.lt; }
   const total = paras.reduce((s, p) => s + p.m.length, 0);
   if(chs.length === 1 && !chs[0].t && total > 30000){
     chs.length = 0; let a = 0, n = 0;
@@ -317,7 +338,7 @@ const doc = $('#trDoc'), scroller = $('#trScroll'), reader = $('#trReader');
 let els = new Map();
 function chapterTitle(k, short){
   const c = bk.chaps[k]; if(!c) return '';
-  const hs = []; for(let i = c.a; i < c.b && bk.paras[i].c; i++) hs.push(i);
+  const hs = []; for(let i = c.a; i < c.b && (bk.paras[i].c || bk.paras[i].h); i++) hs.push(i);
   let t = hs.length && hs.every(i => bk.tr[i] != null) ? hs.map(i => plain(bk.tr[i])).join(' ') : c.t;
   if(!t) t = c.part ? '구간 ' + (k + 1) : k === 0 ? '앞부분' : (k + 1) + '번째';
   return short && t.length > 34 ? t.slice(0, 33) + '…' : t;
@@ -343,7 +364,7 @@ function render(){
   const frag = document.createDocumentFragment();
   for(let i = c.a; i < c.b; i++){
     const p = bk.paras[i], sec = document.createElement('section');
-    sec.className = 'tp' + (p.c ? ' c' : '') + (p.s ? ' s' : ''); sec.dataset.i = i;
+    sec.className = 'tp' + (p.c || p.h ? ' c' : '') + (p.s ? ' s' : ''); sec.dataset.i = i;
     if(!p.s){ const kk = document.createElement('p'); kk.className = 'k'; kk.lang = 'ko'; sec.appendChild(kk); }
     const o = document.createElement('p'); o.className = 'o'; o.lang = bk.lang || 'en'; if(p.s) o.textContent = p.m; else fill(o, p.m); sec.appendChild(o);
     frag.appendChild(sec); els.set(i, sec);
@@ -630,7 +651,7 @@ async function toMs(all){
     for(let i = c.a; i < c.b; i++){
       const p = bk.paras[i], runs = p.s ? [{t: '* * *', b: false, i: false}] : fromMarkup(bk.tr[i] != null ? bk.tr[i] : p.m).map(r => ({t: r.t.replace(new RegExp(STAR, 'g'), '*'), b: r.b, i: r.i}));
       chars += runs.reduce((s, r) => s + r.t.replace(/\s/g, '').length, 0);
-      paras.push({runs, chap: !!p.c});
+      paras.push({runs, chap: !!(p.c || p.h)});
     }
   });
   if(!paras.length){ toast('아직 다 옮긴 장이 없습니다', 4000); return; }
@@ -728,13 +749,25 @@ function mergeOpen(remote){
   save();
   return true;
 }
-function start(rec, pos){
+function start(rec, pos, src){
   bk = rec;
   for(const k of ['tr', 'ed', 'fail', 'tries', 'ts']) if(!bk[k] || typeof bk[k] !== 'object') bk[k] = {};
   bk.gloss = bk.gloss || ''; bk.trTitle = bk.trTitle || '';
+  const before = chaptersOf(bk.paras);
+  if(src && src !== rec && src.paras.length === bk.paras.length) bk.paras.forEach((p, i) => {   // 같은 글이라 문단 순서도 같다
+    const q = src.paras[i]; for(const k of ['k', 'kt', 'h']){ if(q[k]) p[k] = q[k]; else delete p[k]; }
+  });
+  if(!marked(bk.paras)) bk.paras.forEach(p => { if(!p.s && titleLine(plain(p.m))) p.h = 1; });
   bk.chaps = chaptersOf(bk.paras);
   Object.assign(tq, {stopped: false, err: null, limit: 0, fails: 0, again: false, calls: 0});
   pos = pos || lsGet('tr-pos-' + bk.id) || {};   // tr-pos-: 옛 판이 이 기기에 적어 둔 자리
+  // 장이 새로 나뉘었으면 읽던 자리(장 번호)를 같은 문단이 든 장으로 옮긴다
+  const chOf = i => bk.chaps.findIndex(c => i >= c.a && i < c.b);
+  if(pos.p != null && chOf(pos.p) >= 0) pos = Object.assign({}, pos, {ch: chOf(pos.p)});
+  else if(Number.isInteger(pos.ch) && before[pos.ch] && JSON.stringify(before.map(c => c.a)) !== JSON.stringify(bk.chaps.map(c => c.a))){
+    const o = before[pos.ch];
+    pos = pos.end ? {ch: chOf(o.b - 1), end: 1} : {ch: chOf(o.a), p: o.a, f: 0};
+  }
   L.live = {id: bk.id, merge: mergeOpen, gone(){ close(true); toast('다른 기기에서 이 책을 서재에서 지웠습니다', 5000); }};
   head();
   els = new Map(); view.ch = -1;
@@ -749,7 +782,7 @@ async function openFile(f){
     const id = await hashOf(src);
     const rec = await L.trGet(id), m = await L.meta(id);
     if(reader.hidden) return;
-    start(rec || Object.assign(src, {id, name: f.name, trTitle: '', tr: {}, ed: {}, fail: {}, tries: {}, ts: {}, gloss: '', glossAt: 0, all: false}), m && m.pos);
+    start(rec || Object.assign(src, {id, name: f.name, trTitle: '', tr: {}, ed: {}, fail: {}, tries: {}, ts: {}, gloss: '', glossAt: 0, all: false}), m && m.pos, src);
   }catch(e){
     if(reader.hidden) return;
     const msg = B.errText(e);

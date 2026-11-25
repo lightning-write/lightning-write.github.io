@@ -63,9 +63,11 @@ function mergeTr(a, b){
   }
   if((b.glossAt || 0) > (a.glossAt || 0)){ out.gloss = b.gloss || ''; out.glossAt = b.glossAt; }
   out.trTitle = a.trTitle || b.trTitle || '';
+  if(!chMarked(a) && chMarked(b)) out.paras = b.paras;   // 장 나눔 표시(차례에서 읽은 것)는 있는 쪽 것. 글은 같다
   return out;
 }
-const trKey = r => JSON.stringify([r.tr || {}, r.ed || {}, r.fail || {}, r.gloss || '', r.trTitle || '']);
+const chMarked = r => !!(r && r.paras && r.paras.some(p => p.k || p.h));
+const trKey = r => JSON.stringify([r.tr || {}, r.ed || {}, r.fail || {}, r.gloss || '', r.trTitle || '', chMarked(r) ? 1 : 0]);
 
 /* ================= 번역 책 (translate.js가 부른다) ================= */
 let live = null;   // 번역 화면에 지금 열린 책: {id, merge(remote)}
