@@ -326,10 +326,71 @@ function rdText(paras){
   rd.doc.textContent = ''; rd.doc.classList.toggle('indent', !!W.prefs.indent); rd.doc.appendChild(frag);
   $('#rdInfo').textContent = chars.toLocaleString() + '자';
 }
-/* ---- EPUB: 차례(spine) 순서대로 글과 그림만 옮긴다. 책의 스타일·스크립트는 쓰지 않는다 ---- */
+/* ---- EPUB: 차례(spine) 순서대로 글과 그림만 옮긴다. 책의 스타일·스크립트는 쓰지 않는다
+   (책 CSS에서 '여기서 새 쪽'(page-break-·break-before/after) 규칙만 읽어 장이 새 쪽에서 시작하게 한다) ---- */
 const MIME = {jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml'};
 const DROP = new Set(['script', 'style', 'head', 'link', 'meta', 'iframe', 'object', 'embed', 'audio', 'video', 'form', 'input', 'button', 'select', 'textarea', 'title', 'noscript', 'template', 'canvas']);
 const KEEP = new Set(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'ul', 'ol', 'li', 'br', 'hr', 'span', 'em', 'i', 'b', 'strong', 'u', 'sup', 'sub', 'small', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'pre', 'code', 'figure', 'figcaption', 'dl', 'dt', 'dd', 'ruby', 'rt', 'rp']);
+const INL = new Set(['br', 'span', 'em', 'i', 'b', 'strong', 'u', 'sup', 'sub', 'small', 'code', 'ruby', 'rt', 'rp', 'img']);
+const BRK_V = '(?:always|page|left|right|recto|verso)';
+const BRK_B = new RegExp('[;{\\s](?:page-)?break-before\\s*:\\s*' + BRK_V, 'i'), BRK_A = new RegExp('[;{\\s](?:page-)?break-after\\s*:\\s*' + BRK_V, 'i');
+/* CSS 글에서 새 쪽 규칙의 선택자만: {b: 앞에서 나눔, a: 뒤에서 나눔}. @import는 따라가고 @media 안 규칙도 읽는다 */
+async function cssBreaks(z, text, base, memo, depth){
+  const out = {b: [], a: []};
+  text = String(text || '').replace(/\/\*[\s\S]*?\*\//g, '');
+  if(depth < 3) for(const m of text.matchAll(/@import\s+(?:url\(\s*)?["']?([^"')\s;]+)/gi)){
+    const r = await cssFile(z, resolvePath(base, m[1]), memo, depth + 1); out.b.push(...r.b); out.a.push(...r.a);
+  }
+  text = text.replace(/@(?:import|charset|namespace)[^;{}]*;/gi, '')
+    .replace(/@media([^{]*)\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}/gi, (m, q, body) => /print/i.test(q) && !/screen|all|handheld|amzn/i.test(q) ? '' : body);   // 인쇄용 규칙은 뺀다
+  for(const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)){
+    const sel = m[1].trim(), d = ';' + m[2]; if(!sel || sel[0] === '@') continue;
+    if(BRK_B.test(d)) out.b.push(sel);
+    if(BRK_A.test(d)) out.a.push(sel);
+  }
+  return out;
+}
+function cssFile(z, path, memo, depth){
+  if(!path) return Promise.resolve({b: [], a: []});
+  if(!memo.has(path)) memo.set(path, z.text(path).then(t => t == null ? {b: [], a: []} : cssBreaks(z, t, path, memo, depth)));
+  return memo.get(path);
+}
+/* 나눔이 둘 겹치거나 앞뒤에 글이 없으면 빈 쪽이 생기므로, 글·그림 사이에 있는 나눔만 남긴다 */
+function tidyBreaks(root){
+  let seen = false, pend = null, lastB = null; const open = [];
+  const endOf = e => { if(seen && !pend){ pend = e; } else e.classList.remove('pa'); };
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  for(let n = w.nextNode(); n; n = w.nextNode()){
+    while(open.length && !open[open.length - 1].contains(n)) endOf(open.pop());
+    if(n.nodeType === 3 || n.localName === 'img'){
+      if(n.nodeType === 3 && !n.nodeValue.trim()) continue;
+      seen = true; pend = null; lastB = null; continue;
+    }
+    if(n.classList.contains('pb')){
+      if(pend){ pend.classList.remove('pa'); pend = null; seen = false; lastB = n; }
+      else if(seen){ seen = false; lastB = n; }
+      else n.classList.remove('pb');
+    }
+    if(n.classList.contains('pa')) open.push(n);
+  }
+  while(open.length) endOf(open.pop());
+  if(pend) pend.classList.remove('pa');
+  if(lastB) lastB.classList.remove('pb');
+}
+/* 책에 새 쪽 규칙이 하나도 없을 때: 두 번 넘게 나오는 가장 큰 제목 단계를 장 제목으로 보고, 그 앞에 글이 있으면 새 쪽 */
+function headBreaks(parts){
+  const cnt = [0, 0, 0, 0, 0, 0, 0];
+  for(const p of parts) for(const h of p.querySelectorAll('h1,h2,h3,h4,h5,h6')) cnt[+h.localName[1]]++;
+  const L = cnt.findIndex((c, i) => i > 0 && c >= 2); if(L < 1) return;
+  for(const p of parts){
+    let seen = false; const w = document.createTreeWalker(p, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for(let n = w.nextNode(); n; n = w.nextNode()){
+      if(n.nodeType === 3){ if(n.nodeValue.trim() && !n.parentNode.closest('h1,h2,h3,h4,h5,h6')) seen = true; }
+      else if(n.localName === 'img') seen = true;
+      else if(/^h[1-6]$/.test(n.localName) && +n.localName[1] <= L){ if(seen) n.classList.add('pb'); seen = false; }
+    }
+  }
+}
 function resolvePath(base, href){
   href = String(href || '').split('#')[0].split('?')[0];
   try{ href = decodeURIComponent(href); }catch(e){}
@@ -384,6 +445,7 @@ async function rdEpub(f, token){
     if(/display:table/.test(st) && /margin:0auto/.test(st)) c.push('rt');
     return c.join(' ');
   }
+  let brk = {b: new Set(), a: new Set()}; const memo = new Map();
   async function clean(src, out, base){
     for(const n of src.childNodes){
       if(n.nodeType === 3){ out.appendChild(document.createTextNode(n.nodeValue)); continue; }
@@ -397,22 +459,38 @@ async function rdEpub(f, token){
       }
       if(tag === 'svg'){ await clean(n, out, base); continue; }
       const e = document.createElement(KEEP.has(tag) ? tag : (tag === 'a' ? 'span' : 'div'));
-      const c = styleClass(n); if(c) e.className = c;
+      let c = styleClass(n);
+      if(!INL.has(e.localName)){
+        const st = ';' + (n.getAttribute('style') || '');
+        if(brk.b.has(n) || BRK_B.test(st)) c += ' pb';
+        if(brk.a.has(n) || BRK_A.test(st)) c += ' pa';
+      }
+      c = c.trim(); if(c) e.className = c;
       await clean(n, e, base);
       if(KEEP.has(tag) || e.childNodes.length) out.appendChild(e);
     }
   }
-  const frag = document.createDocumentFragment(); let parts = 0;
+  const frag = document.createDocumentFragment(), parts = [];
   for(const s of spine){
     if(!s.linear || /\bnav\b/.test(s.it.props)) continue;
     const text = await z.text(s.it.href); if(text == null) continue;
-    const body = spineDoc(XP, text);
+    const body = spineDoc(XP, text), dom = body.ownerDocument;
+    // 이 파일에 걸린 책 CSS(link·style)의 새 쪽 규칙을 원래 요소에 표시해 둔다
+    brk = {b: new Set(), a: new Set()};
+    const rules = [];
+    for(const l of dom.getElementsByTagNameNS('*', 'link')) if(/stylesheet/i.test(l.getAttribute('rel') || '') && !/alternate/i.test(l.getAttribute('rel'))) rules.push(cssFile(z, resolvePath(s.it.href, l.getAttribute('href')), memo, 0));
+    for(const st of dom.getElementsByTagNameNS('*', 'style')) rules.push(cssBreaks(z, st.textContent, s.it.href, memo, 0));
+    for(const r of await Promise.all(rules)) for(const k of ['b', 'a']) for(const sel of r[k]){ try{ for(const e of body.querySelectorAll(sel)) brk[k].add(e); }catch(e){} }
     const part = document.createElement('div'); part.className = 'rd-part';
     await clean(body, part, s.it.href);
     if(rd.token !== token) return;
-    if(part.textContent.trim() || part.querySelector('img')){ frag.appendChild(part); parts++; }
+    if(part.textContent.trim() || part.querySelector('img')){ frag.appendChild(part); parts.push(part); }
   }
-  if(!parts) throw new Error('empty');
+  if(!parts.length) throw new Error('empty');
+  // 장 나눔: 책 규칙이 없으면 제목으로 짐작, 파일마다 새 쪽, 빈 쪽이 생기는 나눔은 뺌
+  if(!frag.querySelector('.pb,.pa')) headBreaks(parts);
+  parts.forEach((p, i) => { if(i) p.classList.add('pb'); });
+  tidyBreaks(frag);
   rd.doc.textContent = ''; rd.doc.classList.add('indent'); rd.doc.appendChild(frag);
   return title;
 }

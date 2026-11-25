@@ -470,7 +470,9 @@ select,input[type=number],input[type=text],input:not([type]){background:var(--pa
 #reader.paged #rdDoc img{max-height:calc(var(--pg-h,80vh) - 2em);width:auto;max-width:100%;break-inside:avoid}
 #reader.paged #rdDoc .chap,#reader.paged #rdDoc h1,#reader.paged #rdDoc h2,#reader.paged #rdDoc h3,#reader.paged #rdDoc h4{break-after:avoid}
 #reader.paged #rdDoc .rd-part{margin:0}
-#reader.paged #rdDoc .rd-part + .rd-part{break-before:column;border-top:0;padding-top:0}
+#reader.paged #rdDoc .rd-part + .rd-part{border-top:0;padding-top:0}
+#reader.paged #rdDoc .pb{break-before:column}
+#reader.paged #rdDoc .pa{break-after:column}
 #reader.paged #rdDoc.pdf{display:flex;align-items:center;flex-wrap:nowrap;max-width:none;width:max-content;height:100%;margin:0;padding:0}
 #reader.paged .pdf-page{flex:none;box-shadow:0 1px 8px rgba(0,0,0,.2)}
 /* 번역 모드도 쪽 넘기기 */
