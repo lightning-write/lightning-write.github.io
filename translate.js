@@ -80,6 +80,76 @@ const TITLE_RE = new RegExp('^(?:(?:chapter|book|part|volume|stave|canto|letter|
 const NUM_LINE = new RegExp('^(?:\\d{1,3}|' + RMN.toUpperCase().replace('(?=[IVXLCDM])', '(?=[IVXLCDM])') + ')\\.?$');
 const titleLine = t => { t = t.trim(); return t.length <= 60 && (TITLE_RE.test(t) || NUM_LINE.test(t)); };
 const marked = ps => ps.some(p => p.c || p.h || p.k);
+const isHead = p => !!(p.c || p.h || p.hw);
+
+/* ================= 쪽 머리글·쪽에서 끊긴 문단 =================
+   종이책 판(PDF·워드)을 바꾼 전자책에는 쪽이 바뀌던 자리마다 「MIA BALLARD 5」 같은 쪽 머리글과 구분선이 문단으로 끼어 있고,
+   그 자리에서 한 문장이 두 문단으로 끊겨 있다. 책 번호(hashOf: m·c·s)와 문단 번호는 그대로 두고, 책을 열 때마다 표시만 다시 단다.
+   x: 숨기고 번역하지 않는 문단(쪽 머리글, 그 옆의 구분선, 장 제목 밑 구분선)
+   j: 앞 문단에서 끊겨 이어지는 조각 — 앞 문단과 한 문단으로 보이고, 둘 다 아직이면 한 문단으로 번역한다
+   hw: 「ONE」「TWENTY-TWO」처럼 숫자를 말로 쓴 장 제목(1부터 차례대로 셋 넘게 나올 때)과, 그 제목들과 같은 구분선을 밑에 둔 짧은 줄(PROLOGUE 등) */
+const NUMS = {one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19};
+const TENS = {twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90};
+function wordNum(t){   // 'TWENTY-ONE' → 21, 'Chapter Three' → 3
+  const m = t.toLowerCase().replace(/^chapter\s+/, '').replace(/[.:]$/, '').match(/^([a-z]+)(?:[\s-]+([a-z]+))?$/); if(!m) return 0;
+  if(!m[2]) return NUMS[m[1]] || TENS[m[1]] || 0;
+  return TENS[m[1]] && NUMS[m[2]] < 10 ? TENS[m[1]] + NUMS[m[2]] : 0;
+}
+const spaced = s => String(s).replace(/[\s  -​　]+/g, ' ').trim();
+const RULE_LINE = /^[\s_\-‐-―~=·•.]{3,}$/;   // 글자 없이 줄표·밑줄만
+const openEnd = s => !/[.!?…:;"”’'»」』)\]\-‐-―。！？]$/.test(s);   // 문장이 맺어지지 않은 채 끝남
+const LOWER = /^\p{Ll}/u;
+const HEADER_RE = /^(\D{1,60}?)[\s|·•:,\-‐-―]*(\d{1,4})$|^(\d{1,4})[\s|·•:,\-‐-―]*(\D{1,60})$/;
+const NOT_HEADER = /^(chapter|part|book|section|volume|vol|page|day|week|month|year|room|act|scene|letter|step|level|no|number|track|episode)\b/;
+function pageMarks(ps, title, author){
+  for(const p of ps){ delete p.x; delete p.j; delete p.hw; }
+  const T = ps.map(p => p.s ? '' : spaced(plain(p.m)));
+  const norm = s => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  // 1. 쪽 머리글: 「글 + 쪽 번호」·「쪽 번호 + 글」 줄. 작가 이름·책 제목이면 세 번, 아니면 번호를 늘려 가며 여덟 번 넘게 나올 때
+  const seen = new Map();
+  T.forEach((t, i) => {
+    if(!t || t.length > 70 || isHead(ps[i])) return;
+    const m = t.match(HEADER_RE); if(!m) return;
+    const lb = norm(m[1] || m[4]); if(!/\p{L}/u.test(lb)) return;
+    if(!seen.has(lb)) seen.set(lb, []);
+    seen.get(lb).push([i, +(m[2] || m[3])]);
+  });
+  const names = new Set([norm(title || ''), norm(author || '')].filter(Boolean));
+  for(const [lb, hits] of seen){
+    const nums = hits.map(h => h[1]); let up = 0;
+    for(let k = 1; k < nums.length; k++) if(nums[k] >= nums[k - 1]) up++;
+    const ok = names.has(lb) ? hits.length >= 3
+      : hits.length >= 8 && new Set(nums).size >= hits.length * 0.8 && up >= (nums.length - 1) * 0.8 && !NOT_HEADER.test(lb);
+    if(ok) for(const [i] of hits) ps[i].x = 1;
+  }
+  // 2. 숫자를 말로 쓴 장 제목(대문자 또는 Chapter …), 1부터 하나씩 늘어 가는 것만
+  const hw = []; let last = 0;
+  T.forEach((t, i) => {
+    if(!t || t.length > 30 || ps[i].x || isHead(ps[i])) return;
+    if(!(/^chapter\s/i.test(t) || (t === t.toUpperCase() && /\p{L}/u.test(t)))) return;
+    const v = wordNum(t);
+    if(v && (v === last + 1 || (v === 1 && last >= 2))){ hw.push(i); last = v; }
+  });
+  if(hw.length >= 3){
+    for(const i of hw) ps[i].hw = 1;
+    const under = new Set(hw.map(i => T[i + 1]).filter(t => t && RULE_LINE.test(t)));
+    if(under.size) T.forEach((t, i) => { if(t && t.length <= 40 && !ps[i].x && !isHead(ps[i]) && !RULE_LINE.test(t) && openEnd(t) && under.has(T[i + 1])) ps[i].hw = 1; });
+  }
+  // 3. 구분선: 쪽 머리글 바로 앞뒤, 장 제목 바로 밑
+  const hdr = i => i >= 0 && i < ps.length && ps[i].x && !RULE_LINE.test(T[i]);
+  T.forEach((t, i) => { if(t && RULE_LINE.test(t) && !isHead(ps[i]) && (hdr(i - 1) || hdr(i + 1) || (i > 0 && isHead(ps[i - 1])))) ps[i].x = 1; });
+  // 4. 끊긴 문단: 쪽 머리글을 사이에 두고 앞 문단이 맺어지지 않았거나 뒤 조각이 소문자로 시작하면 잇는다.
+  //    머리글이 없어도 긴 문단이 맺어지지 않은 채 끝나고 다음이 소문자로 시작하면 잇는다(시 같은 짧은 줄은 그대로)
+  let prev = -1, junk = false;
+  ps.forEach((p, i) => {
+    if(p.x){ junk = true; return; }
+    const t = T[i], pt = prev >= 0 ? T[prev] : '';
+    if(t && pt && !p.s && !p.k && !isHead(p) && !isHead(ps[prev])){
+      if(junk ? openEnd(pt) || LOWER.test(t) : openEnd(pt) && LOWER.test(t) && pt.length >= 40) p.j = 1;
+    }
+    prev = i; junk = false;
+  });
+}
 /* 구텐베르크 TXT: 한 문단이 70자쯤에서 줄이 바뀌어 있다. 빈 줄로 나뉜 덩어리를 한 문단으로 잇는다. _기울임_도 살린다 */
 function txtBook(text, name){
   text = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
@@ -144,7 +214,7 @@ async function hashOf(src){
 function chaptersOf(paras){
   const chs = []; let cur = null, head = false;
   paras.forEach((p, i) => {
-    const isH = !!(p.c || p.h);
+    const isH = isHead(p);
     if(isH || p.k){
       if(cur && head){   // 제목 줄만 있던 장에 이어 붙인다
         cur.b = i + 1; if(isH) cur.ht = (cur.ht + ' ' + plain(p.m)).trim(); if(p.kt && !cur.lt) cur.lt = p.kt;
@@ -170,22 +240,44 @@ function chaptersOf(paras){
 const TARGET = 9000, MAXP = 90;
 let bk = null;   // 지금 연 책: {id, name, title, author, lang, trTitle, paras, chaps, tr, ed, fail, tries, gloss, all}
 const view = {ch: 0, v: 'tr', edit: false};
-const pending = i => { const p = bk.paras[i]; return !p.s && bk.tr[i] == null && !bk.fail[i] && !!p.m.trim(); };
+const pending = i => { const p = bk.paras[i]; return !p.s && !p.x && bk.tr[i] == null && !bk.fail[i] && !!p.m.trim(); };
+/* 끊긴 문단 묶음: fol = 머리 문단 → 이어지는 조각들, own = 조각 → 머리 문단 */
+function groups(){
+  bk.fol = new Map(); bk.own = new Map(); let h = -1;
+  bk.paras.forEach((p, i) => {
+    if(p.x) return;
+    if(p.j && h >= 0){ if(!bk.fol.has(h)) bk.fol.set(h, []); bk.fol.get(h).push(i); bk.own.set(i, h); return; }
+    h = i;
+  });
+}
+const fols = i => (bk.fol && bk.fol.get(i)) || [];
+const headOf = i => bk.own && bk.own.has(i) ? bk.own.get(i) : i;
+const srcOf = i => [i, ...fols(i)].map(k => bk.paras[k].m).join(' ');
+function trOf(i){   // 보일 번역문: 머리 문단의 번역 + 조각의 번역(따로 옮긴 것). 아직이거나 실패한 조각은 원문
+  if(bk.tr[i] == null) return null;
+  let s = bk.tr[i];
+  for(const k of fols(i)){ const v = bk.tr[k]; if(v) s += ' ' + v; else if(v == null) s += ' ' + bk.paras[k].m; }
+  return s;
+}
 function chunkOf(ch, limit){
   const c = bk.chaps[ch]; if(!c) return null;
-  const idx = []; let n = 0;
+  const idx = [], grp = new Map(); let n = 0;
   for(let i = c.a; i < c.b; i++){
     if(!pending(i)) continue;
-    const len = bk.paras[i].m.length;
+    const h = headOf(i);
+    if(h !== i && pending(h)) continue;   // 머리 문단과 함께 간다
+    const mem = h !== i ? [i] : [i, ...fols(i).filter(pending)];
+    const len = mem.reduce((s, k) => s + bk.paras[k].m.length + 1, 0);
     if(idx.length && (n + len > TARGET * 1.4 || idx.length >= (limit || MAXP))) break;
-    idx.push(i); n += len;
+    idx.push(i); grp.set(i, mem); n += len;
     if(n >= TARGET) break;
   }
-  return idx.length ? {ch, idx} : null;
+  return idx.length ? {ch, idx, grp} : null;
 }
+const jobSrc = (job, i) => (job.grp && job.grp.get(i) || [i]).map(k => bk.paras[k].m).join(' ');
 function buildPrompt(job){
   const before = [];
-  for(let i = job.idx[0] - 1, n = 0; i >= 0 && n < 3; i--){ const p = bk.paras[i]; if(p.s) continue; if(bk.tr[i] == null) break; before.unshift(plain(bk.tr[i])); n++; }
+  for(let i = job.idx[0] - 1, n = 0; i >= 0 && n < 3; i--){ const p = bk.paras[i]; if(p.s || p.x || headOf(i) !== i) continue; if(bk.tr[i] == null) break; before.unshift(plain(trOf(i))); n++; }
   const ask = !bk.trTitle;
   return [
     '너는 문학 번역가다. 아래 [원문]을 한국어로 옮긴다.',
@@ -208,7 +300,7 @@ function buildPrompt(job){
     before.length ? '\n[앞 대목 번역 — 흐름만 참고하고 다시 쓰지 않는다]\n' + before.join('\n') : null,
     '',
     '[원문]',
-    job.idx.map((i, k) => '[' + (k + 1) + '] ' + bk.paras[i].m).join('\n')
+    job.idx.map((i, k) => '[' + (k + 1) + '] ' + jobSrc(job, i)).join('\n')
   ].filter(x => x != null).join('\n');
 }
 function pairs(s){
@@ -270,7 +362,7 @@ function addGloss(gl, tone){
 /* ================= 보관 ================= */
 function counts(){
   let all = 0, done = 0;
-  bk.paras.forEach((p, i) => { if(p.s) return; const n = p.m.length; all += n; if(bk.tr[i] != null || bk.fail[i]) done += n; });
+  bk.paras.forEach((p, i) => { if(p.s || p.x) return; const n = p.m.length; all += n; if(bk.tr[i] != null || bk.fail[i]) done += n; });
   return {all, done, pct: all ? Math.floor(done / all * 100) : 100};
 }
 let saveP = Promise.resolve();
@@ -328,6 +420,7 @@ async function runJob(job, me){
     if(!v || (!whole && n === p.last)) continue;   // 끊긴 답의 마지막 문단은 덜 왔을 수 있다
     const i = job.idx[n - 1]; if(bk.tr[i] != null) continue;
     bk.tr[i] = v; delete bk.tries[i]; touch(i); got++;
+    for(const k of (job.grp && job.grp.get(i) || []).slice(1)) if(bk.tr[k] == null){ bk.tr[k] = ''; delete bk.tries[k]; touch(k); }   // 함께 옮긴 조각
   }
   if(p.title && !bk.trTitle){ bk.trTitle = p.title; head(); }
   addGloss(p.gl, p.tone);
@@ -361,7 +454,7 @@ const doc = $('#trDoc'), scroller = $('#trScroll'), reader = $('#trReader');
 let els = new Map();
 function chapterTitle(k, short){
   const c = bk.chaps[k]; if(!c) return '';
-  const hs = []; for(let i = c.a; i < c.b && (bk.paras[i].c || bk.paras[i].h); i++) hs.push(i);
+  const hs = []; for(let i = c.a; i < c.b && (isHead(bk.paras[i]) || bk.paras[i].x); i++) if(!bk.paras[i].x) hs.push(i);
   let t = hs.length && hs.every(i => bk.tr[i] != null) ? hs.map(i => plain(bk.tr[i])).join(' ') : c.t;
   if(!t) t = c.part ? '구간 ' + (k + 1) : k === 0 ? '앞부분' : (k + 1) + '번째';
   return short && t.length > 34 ? t.slice(0, 33) + '…' : t;
@@ -386,10 +479,11 @@ function render(){
   doc.textContent = ''; els = new Map();
   const frag = document.createDocumentFragment();
   for(let i = c.a; i < c.b; i++){
-    const p = bk.paras[i], sec = document.createElement('section');
-    sec.className = 'tp' + (p.c || p.h ? ' c' : '') + (p.s ? ' s' : ''); sec.dataset.i = i;
+    const p = bk.paras[i]; if(p.x || headOf(i) !== i) continue;   // 쪽 머리글은 숨기고, 끊긴 조각은 앞 문단에 붙여 보인다
+    const sec = document.createElement('section');
+    sec.className = 'tp' + (isHead(p) ? ' c' : '') + (p.s ? ' s' : ''); sec.dataset.i = i;
     if(!p.s){ const kk = document.createElement('p'); kk.className = 'k'; kk.lang = 'ko'; sec.appendChild(kk); }
-    const o = document.createElement('p'); o.className = 'o'; o.lang = bk.lang || 'en'; if(p.s) o.textContent = p.m; else fill(o, p.m); sec.appendChild(o);
+    const o = document.createElement('p'); o.className = 'o'; o.lang = bk.lang || 'en'; if(p.s) o.textContent = p.m; else fill(o, srcOf(i)); sec.appendChild(o);
     frag.appendChild(sec); els.set(i, sec);
   }
   const end = document.createElement('div'); end.className = 'tr-end';
@@ -404,8 +498,10 @@ function render(){
 }
 const endLabels = () => doc.querySelectorAll('.tr-end [data-to]').forEach(b => { b.lastChild.textContent = chapterTitle(+b.dataset.to, true); });
 function paint(i){
-  const sec = els.get(i); if(!sec || !bk) return;
-  const t = bk.tr[i], k = sec.querySelector('.k');
+  if(!bk) return;
+  i = headOf(i);
+  const sec = els.get(i); if(!sec) return;
+  const t = trOf(i), k = sec.querySelector('.k');
   sec.classList.toggle('has', t != null);
   sec.classList.toggle('fail', !!bk.fail[i] && t == null);
   sec.classList.toggle('ed', !!bk.ed[i]);
@@ -538,7 +634,9 @@ function posNow(){
 function goPos(pos){
   pg.anchor = pos;
   if(pos.end){ show(pg.n - 1, false); return; }
-  const sec = pos.p != null && els.get(pos.p);
+  let p = pos.p;
+  if(p != null && !els.has(p)){ p = headOf(p); while(p < bk.paras.length && !els.has(p) && (bk.paras[p].x || headOf(p) !== p)) p++; }   // 숨긴 문단이면 그 자리의 보이는 문단
+  const sec = p != null && els.get(p);
   if(!sec){ show(0, false); return; }
   const pages = [...new Set([...sec.getClientRects()].map(r => pageOf(r.left)))].sort((a, b) => a - b);
   show(pages.length ? pages[Math.min(pages.length - 1, Math.floor((pos.f || 0) * pages.length + 0.001))] : 0, false);
@@ -638,7 +736,11 @@ doc.addEventListener('input', e => {
 });
 function flushEdits(){
   if(!bk || !edDirty.size) return;
-  for(const i of edDirty){ const sec = els.get(i), k = sec && sec.querySelector('.k'); if(!k) continue; bk.tr[i] = domToMarkup(k); bk.ed[i] = 1; delete bk.fail[i]; touch(i); sec.classList.add('ed'); }
+  for(const i of edDirty){
+    const sec = els.get(i), k = sec && sec.querySelector('.k'); if(!k) continue;
+    bk.tr[i] = domToMarkup(k); bk.ed[i] = 1; delete bk.fail[i]; touch(i); sec.classList.add('ed');
+    for(const f of fols(i)) if(bk.tr[f] !== ''){ bk.tr[f] = ''; bk.ed[f] = 1; delete bk.fail[f]; touch(f); }   // 이어 붙여 보이던 조각도 고친 글에 들어 있다
+  }
   edDirty.clear(); save();
 }
 doc.addEventListener('keydown', e => { if(e.key === 'Enter' && e.target.closest && e.target.closest('.k')) e.preventDefault(); });
@@ -672,9 +774,10 @@ async function toMs(all){
     if(!all && chapterLeft(k)) return;
     chs++;
     for(let i = c.a; i < c.b; i++){
-      const p = bk.paras[i], runs = p.s ? [{t: '* * *', b: false, i: false}] : fromMarkup(bk.tr[i] != null ? bk.tr[i] : p.m).map(r => ({t: r.t.replace(new RegExp(STAR, 'g'), '*'), b: r.b, i: r.i}));
+      const p = bk.paras[i]; if(p.x || headOf(i) !== i) continue;
+      const tx = p.s ? null : trOf(i), runs = p.s ? [{t: '* * *', b: false, i: false}] : fromMarkup(tx != null ? tx : srcOf(i)).map(r => ({t: r.t.replace(new RegExp(STAR, 'g'), '*'), b: r.b, i: r.i}));
       chars += runs.reduce((s, r) => s + r.t.replace(/\s/g, '').length, 0);
-      paras.push({runs, chap: !!(p.c || p.h)});
+      paras.push({runs, chap: isHead(p)});
     }
   });
   if(!paras.length){ toast('아직 다 옮긴 장이 없습니다', 4000); return; }
@@ -796,6 +899,7 @@ function start(rec, pos, src){
     const q = src.paras[i]; for(const k of ['k', 'kt', 'h']){ if(q[k]) p[k] = q[k]; else delete p[k]; }
   });
   if(!marked(bk.paras)) bk.paras.forEach(p => { if(!p.s && titleLine(plain(p.m))) p.h = 1; });
+  pageMarks(bk.paras, bk.title, bk.author); groups();
   bk.chaps = chaptersOf(bk.paras);
   Object.assign(tq, {stopped: false, err: null, limit: 0, fails: 0, again: false, calls: 0});
   pos = pos || lsGet('tr-pos-' + bk.id) || {};   // tr-pos-: 옛 판이 이 기기에 적어 둔 자리
@@ -882,5 +986,5 @@ window.addEventListener('keydown', e => {
 }, true);
 window.addEventListener('pagehide', () => { if(bk){ flushEdits(); savePos(); } });
 
-window.__tr = {openFile, openSaved, close, _: {toMarkup, fromMarkup, domToMarkup, txtBook, chaptersOf, parseOut, cutMeta, buildPrompt: j => buildPrompt(j), chunkOf: (c, l) => chunkOf(c, l), state: () => ({bk, view, tq}), posNow}};
+window.__tr = {openFile, openSaved, close, _: {toMarkup, fromMarkup, domToMarkup, txtBook, chaptersOf, parseOut, cutMeta, pageMarks, trOf: i => trOf(i), buildPrompt: j => buildPrompt(j), chunkOf: (c, l) => chunkOf(c, l), state: () => ({bk, view, tq}), posNow}};
 })();
