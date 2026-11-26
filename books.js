@@ -255,8 +255,10 @@ function rdPosNow(){
   if(rd.pdf) return {pos: {pg: cur + 1, f: 0}, pct: Math.round((cur + 1) / ms.length * 100), pages: ms.length};
   if(cur === 0) return {pos: {a: -1}, pct: 0};
   const lastPage = el => { const rs = el.getClientRects(); return rs.length ? pageOf(rs[rs.length - 1].left) : -1; };
+  const lastAt = i => { for(; i >= 0; i--){ const v = lastPage(ms[i]); if(v >= 0) return v; } return -1; };   // 숨긴 문단(쪽 머리글)은 앞 글의 쪽으로
   let lo = 0, hi = ms.length - 1;   // 끝이 지금 쪽이거나 그 뒤인 첫 글 = 이 쪽 맨 위에 보이는 글
-  while(lo < hi){ const m = (lo + hi) >> 1; if(lastPage(ms[m]) >= cur) hi = m; else lo = m + 1; }
+  while(lo < hi){ const m = (lo + hi) >> 1; if(lastAt(m) >= cur) hi = m; else lo = m + 1; }
+  while(lo < ms.length - 1 && !ms[lo].getClientRects().length) lo++;
   const pages = [...new Set([...ms[lo].getClientRects()].map(r => pageOf(r.left)))].sort((a, b) => a - b);
   const idx = Math.max(0, pages.indexOf(cur));
   return {pos: {a: lo, f: pages.length > 1 ? Math.round(idx / pages.length * 1000) / 1000 : 0}, pct: Math.round(cur / pg.n * 100)};
@@ -268,7 +270,8 @@ function rdGoPos(p){
   pg.anchor = p;
   if(rd.pdf){ rdShow((p.pg || 1) - 1, false); return (p.pg || 1) > 1; }
   if(p.a === -1 || p.a == null){ rdShow(0, false); return false; }
-  const el = rdMarks()[p.a]; if(!el){ rdShow(0, false); return false; }
+  const ms = rdMarks(); let el = ms[p.a]; if(!el){ rdShow(0, false); return false; }
+  if(!el.getClientRects().length){ let k = p.a; while(k < ms.length - 1 && !ms[k].getClientRects().length) k++; if(!ms[k].getClientRects().length){ k = p.a; while(k > 0 && !ms[k].getClientRects().length) k--; } el = ms[k]; }   // 숨긴 문단이면 가까운 보이는 글
   const pages = [...new Set([...el.getClientRects()].map(r => pageOf(r.left)))].sort((a, b) => a - b);
   if(!pages.length){ rdShow(0, false); return false; }
   rdShow(pages[Math.min(pages.length - 1, Math.floor((p.f || 0) * pages.length + 0.001))], false);
@@ -370,7 +373,7 @@ function tidyBreaks(root){
   for(let n = w.nextNode(); n; n = w.nextNode()){
     while(open.length && !open[open.length - 1].contains(n)) endOf(open.pop());
     if(n.nodeType === 3 || n.localName === 'img'){
-      if(n.nodeType === 3 && !n.nodeValue.trim()) continue;
+      if(n.nodeType === 3 && (!n.nodeValue.trim() || (n.parentElement && n.parentElement.closest('.rd-x')))) continue;   // 숨긴 쪽 머리글은 글로 치지 않는다
       seen = true; pend = null; lastB = null; continue;
     }
     if(n.classList.contains('pb')){
@@ -405,6 +408,75 @@ function resolvePath(base, href){
   const parts = href.startsWith('/') ? [] : base.split('/').slice(0, -1);
   for(const seg of href.split('/')){ if(seg === '..') parts.pop(); else if(seg && seg !== '.') parts.push(seg); }
   return parts.join('/');
+}
+/* ---- 쪽 머리글·쪽에서 끊긴 문단 (번역 모드·읽기 모드가 같이 쓴다) ----
+   종이책 판(PDF·워드)을 바꾼 전자책에는 쪽이 바뀌던 자리마다 「MIA BALLARD 5」 같은 쪽 머리글과 구분선이 문단으로 끼어 있고,
+   그 자리에서 한 문장이 두 문단으로 끊겨 있다. 문단은 그대로 두고 표시만 단다. ps: [{c, h, hw, s, k}], textOf(p): 그 문단의 글
+   x: 숨기고 번역하지 않는 문단(쪽 머리글, 그 옆의 구분선, 장 제목 밑 구분선)
+   j: 앞 문단에서 끊겨 이어지는 조각 — 앞 문단과 한 문단으로 보인다(번역 모드는 둘 다 아직이면 한 문단으로 번역)
+   hw: 「ONE」「TWENTY-TWO」처럼 숫자를 말로 쓴 장 제목(1부터 차례대로 셋 넘게 나올 때)과, 그 제목들과 같은 구분선을 밑에 둔 짧은 줄(PROLOGUE 등) */
+const NUMS = {one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19};
+const TENS = {twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90};
+function wordNum(t){   // 'TWENTY-ONE' → 21, 'Chapter Three' → 3
+  const m = t.toLowerCase().replace(/^chapter\s+/, '').replace(/[.:]$/, '').match(/^([a-z]+)(?:[\s-]+([a-z]+))?$/); if(!m) return 0;
+  if(!m[2]) return NUMS[m[1]] || TENS[m[1]] || 0;
+  return TENS[m[1]] && NUMS[m[2]] < 10 ? TENS[m[1]] + NUMS[m[2]] : 0;
+}
+const spaced = s => String(s).replace(/[\s\u00a0\u2000-\u200b\u3000]+/g, ' ').trim();
+const RULE_LINE = /^[\s_\-\u2010-\u2015~=·•.]{3,}$/;   // 글자 없이 줄표·밑줄만
+const openEnd = s => !/[.!?…:;"”’'»」』)\]\-\u2010-\u2015。！？]$/.test(s);   // 문장이 맺어지지 않은 채 끝남
+const LOWER = /^\p{Ll}/u;
+const HEADER_RE = /^(\D{1,60}?)[\s|·•:,\-\u2010-\u2015]*(\d{1,4})$|^(\d{1,4})[\s|·•:,\-\u2010-\u2015]*(\D{1,60})$/;
+const NOT_HEADER = /^(chapter|part|book|section|volume|vol|page|day|week|month|year|room|act|scene|letter|step|level|no|number|track|episode)\b/;
+const isHead = p => !!(p.c || p.h || p.hw);
+function pageMarks(ps, title, author, textOf){
+  for(const p of ps){ delete p.x; delete p.j; delete p.hw; }
+  const T = ps.map(p => p.s ? '' : spaced(textOf(p)));
+  const norm = s => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  // 1. 쪽 머리글: 「글 + 쪽 번호」·「쪽 번호 + 글」 줄. 작가 이름·책 제목이면 세 번, 아니면 번호를 늘려 가며 여덟 번 넘게 나올 때
+  const seen = new Map();
+  T.forEach((t, i) => {
+    if(!t || t.length > 70 || isHead(ps[i])) return;
+    const m = t.match(HEADER_RE); if(!m) return;
+    const lb = norm(m[1] || m[4]); if(!/\p{L}/u.test(lb)) return;
+    if(!seen.has(lb)) seen.set(lb, []);
+    seen.get(lb).push([i, +(m[2] || m[3])]);
+  });
+  const names = new Set([norm(title || ''), norm(author || '')].filter(Boolean));
+  for(const [lb, hits] of seen){
+    const nums = hits.map(h => h[1]); let up = 0;
+    for(let k = 1; k < nums.length; k++) if(nums[k] >= nums[k - 1]) up++;
+    const ok = names.has(lb) ? hits.length >= 3
+      : hits.length >= 8 && new Set(nums).size >= hits.length * 0.8 && up >= (nums.length - 1) * 0.8 && !NOT_HEADER.test(lb);
+    if(ok) for(const [i] of hits) ps[i].x = 1;
+  }
+  // 2. 숫자를 말로 쓴 장 제목(대문자 또는 Chapter …), 1부터 하나씩 늘어 가는 것만
+  const hw = []; let last = 0;
+  T.forEach((t, i) => {
+    if(!t || t.length > 30 || ps[i].x || isHead(ps[i])) return;
+    if(!(/^chapter\s/i.test(t) || (t === t.toUpperCase() && /\p{L}/u.test(t)))) return;
+    const v = wordNum(t);
+    if(v && (v === last + 1 || (v === 1 && last >= 2))){ hw.push(i); last = v; }
+  });
+  if(hw.length >= 3){
+    for(const i of hw) ps[i].hw = 1;
+    const under = new Set(hw.map(i => T[i + 1]).filter(t => t && RULE_LINE.test(t)));
+    if(under.size) T.forEach((t, i) => { if(t && t.length <= 40 && !ps[i].x && !isHead(ps[i]) && !RULE_LINE.test(t) && openEnd(t) && under.has(T[i + 1])) ps[i].hw = 1; });
+  }
+  // 3. 구분선: 쪽 머리글 바로 앞뒤, 장 제목 바로 밑
+  const hdr = i => i >= 0 && i < ps.length && ps[i].x && !RULE_LINE.test(T[i]);
+  T.forEach((t, i) => { if(t && RULE_LINE.test(t) && !isHead(ps[i]) && (hdr(i - 1) || hdr(i + 1) || (i > 0 && isHead(ps[i - 1])))) ps[i].x = 1; });
+  // 4. 끊긴 문단: 쪽 머리글을 사이에 두고 앞 문단이 맺어지지 않았거나 뒤 조각이 소문자로 시작하면 잇는다.
+  //    머리글이 없어도 긴 문단이 맺어지지 않은 채 끝나고 다음이 소문자로 시작하면 잇는다(시 같은 짧은 줄은 그대로)
+  let prev = -1, junk = false;
+  ps.forEach((p, i) => {
+    if(p.x){ junk = true; return; }
+    const t = T[i], pt = prev >= 0 ? T[prev] : '';
+    if(t && pt && !p.s && !p.k && !isHead(p) && !isHead(ps[prev])){
+      if(junk ? openEnd(pt) || LOWER.test(t) : openEnd(pt) && LOWER.test(t) && pt.length >= 40) p.j = 1;
+    }
+    prev = i; junk = false;
+  });
 }
 /* EPUB 꾸러미 열기: 차례(spine)·책 정보(OPF). 잠긴 책(DRM)은 여기서 막는다 */
 async function epubPkg(f){
@@ -463,8 +535,32 @@ const spineDoc = (XP, text) => {
   if(d.getElementsByTagName('parsererror').length) d = XP.parseFromString(text, 'text/html');
   return d.getElementsByTagNameNS('*', 'body')[0] || d.documentElement;
 };
+/* 읽기 모드: 쪽 머리글과 그 옆 구분선은 숨기고, 쪽에서 끊긴 문단은 앞 문단 끝에 옮겨 붙인다. 숫자 말 장 제목(ONE …)은 새 쪽.
+   읽던 자리가 '몇 번째 문단'이라 요소는 지우지 않고 숨긴다(rd-x). → 쪽 머리글이나 끊긴 조각으로 시작하는 파일(앞 쪽에 이어 붙일 것)들 */
+function rdTidyPages(frag, parts, title, author){
+  const LEAF = 'p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre,dt,dd,figcaption,hr,img,table', items = [], cont = new Set();
+  for(const e of frag.querySelectorAll(LEAF)){
+    const t = e.localName;
+    if(e.parentElement && e.parentElement.closest('table')) continue;   // 표는 통째로 하나
+    if(t === 'hr' || t === 'img' || t === 'table'){ items.push({e, s: 1}); continue; }
+    if(e.querySelector(LEAF)) continue;   // 글을 담은 맨 안쪽 덩어리만
+    items.push({e, c: /^h[1-6]$/.test(t) ? 1 : 0, s: 0});
+  }
+  if(items.length < 3) return cont;
+  pageMarks(items, title, author, it => it.e.textContent);
+  let head = null; const seen = new Set();
+  for(const it of items){
+    const part = it.e.closest('.rd-part');
+    if(part && !seen.has(part)){ seen.add(part); if(it.x || it.j) cont.add(part); }
+    if(it.x){ it.e.classList.add('rd-x'); continue; }
+    if(it.hw) it.e.classList.add('chap', 'pb');
+    if(it.j && head){ head.appendChild(document.createTextNode(' ')); while(it.e.firstChild) head.appendChild(it.e.firstChild); it.e.classList.add('rd-x'); continue; }
+    head = it.e;
+  }
+  return cont;
+}
 async function rdEpub(f, token){
-  const {z, XP, spine, title} = await epubPkg(f);
+  const {z, XP, spine, title, author} = await epubPkg(f);
   const blobUrl = new Map();
   async function img(path){
     if(!path) return null;
@@ -517,9 +613,10 @@ async function rdEpub(f, token){
     if(part.textContent.trim() || part.querySelector('img')){ frag.appendChild(part); parts.push(part); }
   }
   if(!parts.length) throw new Error('empty');
-  // 장 나눔: 책 규칙이 없으면 제목으로 짐작, 파일마다 새 쪽, 빈 쪽이 생기는 나눔은 뺌
+  // 장 나눔: 책 규칙이 없으면 제목으로 짐작, 파일마다 새 쪽(쪽 머리글·끊긴 문장으로 시작하는 파일은 앞 쪽에 이어서), 빈 쪽이 생기는 나눔은 뺌
   if(!frag.querySelector('.pb,.pa')) headBreaks(parts);
-  parts.forEach((p, i) => { if(i) p.classList.add('pb'); });
+  const cont = rdTidyPages(frag, parts, title, author);
+  parts.forEach((p, i) => { if(i && !cont.has(p)) p.classList.add('pb'); });
   tidyBreaks(frag);
   rd.doc.textContent = ''; rd.doc.classList.add('indent'); rd.doc.appendChild(frag);
   return title;
@@ -1179,5 +1276,5 @@ window.addEventListener('keydown', e => {
   }
 }, true);
 
-window.__books = {readTextDoc, buildEpub, drawCover, readFile, convertFiles, epubBook, pdfBook, epubsToMs, isEpubFile, isBookFile, sniff, readTxt, errText, paraText};
+window.__books = {pageMarks, readTextDoc, buildEpub, drawCover, readFile, convertFiles, epubBook, pdfBook, epubsToMs, isEpubFile, isBookFile, sniff, readTxt, errText, paraText};
 })();

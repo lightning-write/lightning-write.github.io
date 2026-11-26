@@ -82,74 +82,8 @@ const titleLine = t => { t = t.trim(); return t.length <= 60 && (TITLE_RE.test(t
 const marked = ps => ps.some(p => p.c || p.h || p.k);
 const isHead = p => !!(p.c || p.h || p.hw);
 
-/* ================= 쪽 머리글·쪽에서 끊긴 문단 =================
-   종이책 판(PDF·워드)을 바꾼 전자책에는 쪽이 바뀌던 자리마다 「MIA BALLARD 5」 같은 쪽 머리글과 구분선이 문단으로 끼어 있고,
-   그 자리에서 한 문장이 두 문단으로 끊겨 있다. 책 번호(hashOf: m·c·s)와 문단 번호는 그대로 두고, 책을 열 때마다 표시만 다시 단다.
-   x: 숨기고 번역하지 않는 문단(쪽 머리글, 그 옆의 구분선, 장 제목 밑 구분선)
-   j: 앞 문단에서 끊겨 이어지는 조각 — 앞 문단과 한 문단으로 보이고, 둘 다 아직이면 한 문단으로 번역한다
-   hw: 「ONE」「TWENTY-TWO」처럼 숫자를 말로 쓴 장 제목(1부터 차례대로 셋 넘게 나올 때)과, 그 제목들과 같은 구분선을 밑에 둔 짧은 줄(PROLOGUE 등) */
-const NUMS = {one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19};
-const TENS = {twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90};
-function wordNum(t){   // 'TWENTY-ONE' → 21, 'Chapter Three' → 3
-  const m = t.toLowerCase().replace(/^chapter\s+/, '').replace(/[.:]$/, '').match(/^([a-z]+)(?:[\s-]+([a-z]+))?$/); if(!m) return 0;
-  if(!m[2]) return NUMS[m[1]] || TENS[m[1]] || 0;
-  return TENS[m[1]] && NUMS[m[2]] < 10 ? TENS[m[1]] + NUMS[m[2]] : 0;
-}
-const spaced = s => String(s).replace(/[\s  -​　]+/g, ' ').trim();
-const RULE_LINE = /^[\s_\-‐-―~=·•.]{3,}$/;   // 글자 없이 줄표·밑줄만
-const openEnd = s => !/[.!?…:;"”’'»」』)\]\-‐-―。！？]$/.test(s);   // 문장이 맺어지지 않은 채 끝남
-const LOWER = /^\p{Ll}/u;
-const HEADER_RE = /^(\D{1,60}?)[\s|·•:,\-‐-―]*(\d{1,4})$|^(\d{1,4})[\s|·•:,\-‐-―]*(\D{1,60})$/;
-const NOT_HEADER = /^(chapter|part|book|section|volume|vol|page|day|week|month|year|room|act|scene|letter|step|level|no|number|track|episode)\b/;
-function pageMarks(ps, title, author){
-  for(const p of ps){ delete p.x; delete p.j; delete p.hw; }
-  const T = ps.map(p => p.s ? '' : spaced(plain(p.m)));
-  const norm = s => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  // 1. 쪽 머리글: 「글 + 쪽 번호」·「쪽 번호 + 글」 줄. 작가 이름·책 제목이면 세 번, 아니면 번호를 늘려 가며 여덟 번 넘게 나올 때
-  const seen = new Map();
-  T.forEach((t, i) => {
-    if(!t || t.length > 70 || isHead(ps[i])) return;
-    const m = t.match(HEADER_RE); if(!m) return;
-    const lb = norm(m[1] || m[4]); if(!/\p{L}/u.test(lb)) return;
-    if(!seen.has(lb)) seen.set(lb, []);
-    seen.get(lb).push([i, +(m[2] || m[3])]);
-  });
-  const names = new Set([norm(title || ''), norm(author || '')].filter(Boolean));
-  for(const [lb, hits] of seen){
-    const nums = hits.map(h => h[1]); let up = 0;
-    for(let k = 1; k < nums.length; k++) if(nums[k] >= nums[k - 1]) up++;
-    const ok = names.has(lb) ? hits.length >= 3
-      : hits.length >= 8 && new Set(nums).size >= hits.length * 0.8 && up >= (nums.length - 1) * 0.8 && !NOT_HEADER.test(lb);
-    if(ok) for(const [i] of hits) ps[i].x = 1;
-  }
-  // 2. 숫자를 말로 쓴 장 제목(대문자 또는 Chapter …), 1부터 하나씩 늘어 가는 것만
-  const hw = []; let last = 0;
-  T.forEach((t, i) => {
-    if(!t || t.length > 30 || ps[i].x || isHead(ps[i])) return;
-    if(!(/^chapter\s/i.test(t) || (t === t.toUpperCase() && /\p{L}/u.test(t)))) return;
-    const v = wordNum(t);
-    if(v && (v === last + 1 || (v === 1 && last >= 2))){ hw.push(i); last = v; }
-  });
-  if(hw.length >= 3){
-    for(const i of hw) ps[i].hw = 1;
-    const under = new Set(hw.map(i => T[i + 1]).filter(t => t && RULE_LINE.test(t)));
-    if(under.size) T.forEach((t, i) => { if(t && t.length <= 40 && !ps[i].x && !isHead(ps[i]) && !RULE_LINE.test(t) && openEnd(t) && under.has(T[i + 1])) ps[i].hw = 1; });
-  }
-  // 3. 구분선: 쪽 머리글 바로 앞뒤, 장 제목 바로 밑
-  const hdr = i => i >= 0 && i < ps.length && ps[i].x && !RULE_LINE.test(T[i]);
-  T.forEach((t, i) => { if(t && RULE_LINE.test(t) && !isHead(ps[i]) && (hdr(i - 1) || hdr(i + 1) || (i > 0 && isHead(ps[i - 1])))) ps[i].x = 1; });
-  // 4. 끊긴 문단: 쪽 머리글을 사이에 두고 앞 문단이 맺어지지 않았거나 뒤 조각이 소문자로 시작하면 잇는다.
-  //    머리글이 없어도 긴 문단이 맺어지지 않은 채 끝나고 다음이 소문자로 시작하면 잇는다(시 같은 짧은 줄은 그대로)
-  let prev = -1, junk = false;
-  ps.forEach((p, i) => {
-    if(p.x){ junk = true; return; }
-    const t = T[i], pt = prev >= 0 ? T[prev] : '';
-    if(t && pt && !p.s && !p.k && !isHead(p) && !isHead(ps[prev])){
-      if(junk ? openEnd(pt) || LOWER.test(t) : openEnd(pt) && LOWER.test(t) && pt.length >= 40) p.j = 1;
-    }
-    prev = i; junk = false;
-  });
-}
+/* 쪽 머리글·쪽에서 끊긴 문단 표시(x·j·hw)는 books.js pageMarks가 단다(읽기 모드와 같이 씀). 책 번호(m·c·s)와 문단 번호는 그대로 */
+const pageMarks = (ps, title, author) => B.pageMarks(ps, title, author, p => plain(p.m));
 /* 구텐베르크 TXT: 한 문단이 70자쯤에서 줄이 바뀌어 있다. 빈 줄로 나뉜 덩어리를 한 문단으로 잇는다. _기울임_도 살린다 */
 function txtBook(text, name){
   text = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
