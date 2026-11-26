@@ -199,7 +199,7 @@ function buildPrompt(job){
     '- *기울임*과 **굵게** 표시는 번역문의 같은 말에 그대로 붙인다.',
     '- 장 제목도 옮긴다(예: CHAPTER I → 제1장).',
     '- 사람·땅 이름과 말투는 [표기표]를 따른다. 표기표에 없는 이름은 외래어 표기법에 맞게 적는다.',
-    '- 번역을 다 쓴 뒤, 이번 대목에서 표기표에 없는 사람·땅 이름이 처음 나왔으면 맨 끝에 "#표기 원어=한국어; 원어=한국어" 한 줄을 쓴다. 두 인물 사이의 말투를 이번에 처음 정했으면 "#말투 누가→누구에게=존댓말; 누가→누구에게=반말" 한 줄을 쓴다. 해당이 없으면 쓰지 않는다.',
+    '- 번역을 다 쓴 뒤, 이번 대목에서 표기표에 없는 사람·땅 이름이 처음 나왔으면 맨 끝에 새 줄을 열어 "#표기 원어=한국어; 원어=한국어" 한 줄을 쓴다. 원어 자리에는 [원문]에 적힌 글자를 그대로 쓴다. 이 줄을 번역문 줄 끝에 잇지 않는다. 두 인물 사이의 말투를 이번에 처음 정했으면 "#말투 누가→누구에게=존댓말; 누가→누구에게=반말" 한 줄을 쓴다. 해당이 없으면 쓰지 않는다.',
     ask ? '- 맨 마지막 줄에 책 제목을 한국어로 옮겨 "#제목 한국어 제목"으로 쓴다.' : null,
     '- 그 밖의 말(인사·머리말·설명)은 쓰지 않는다.',
     '',
@@ -216,20 +216,42 @@ function pairs(s){
   for(const x of String(s).split(/[;；]/)){ const kv = x.split(/=|＝/); if(kv.length === 2 && kv[0].trim() && kv[1].trim()) out.push([kv[0].trim(), kv[1].trim()]); }
   return out;
 }
+/* '#' 다음 글이 표기·말투·제목 줄이면 {kind, body}. AI는 '#표기'라는 말을 빼고 '#원어=한국어'만 쓰기도 한다 */
+function metaOf(seg){
+  const m = String(seg).match(/^\s*(표기|말투|제목)(?:\s*[:：]\s*|\s+|$)(.*)$/);
+  if(m) return {kind: m[1], body: m[2]};
+  const ps = String(seg).split(/[;；]/).map(x => x.trim()).filter(Boolean);
+  if(!ps.length || !ps.every(x => /^[^=＝]{1,60}[=＝][^=＝]{1,60}$/.test(x))) return null;
+  return {kind: ps.some(x => /→|->/.test(x.split(/[=＝]/)[0])) ? '말투' : '표기', body: seg};
+}
+/* 번역문 끝에 붙어 온 '#표기 …'를 떼어 낸다(AI가 새 줄을 열지 않고 마지막 문단에 잇는 경우). 해시태그 같은 본문의 '#'은 그대로 */
+function cutMeta(s){
+  let t = String(s); const metas = [];
+  for(;;){
+    let at = t.lastIndexOf('#');
+    while(at > 0 && !/\s/.test(t[at - 1])) at = t.lastIndexOf('#', at - 1);
+    if(at < 0) break;
+    const mt = metaOf(t.slice(at + 1)); if(!mt) break;
+    metas.unshift(mt); t = t.slice(0, at).trimEnd();
+  }
+  return {text: t, metas};
+}
 function parseOut(text, k){
   const out = new Map(); let gl = [], tone = [], title = '', cur = 0, last = 0;
+  const take = ms => { for(const mt of ms){
+    if(mt.kind === '제목') title = mt.body.trim().replace(/^[〈《「『“"]+|[〉》」』”"]+$/g, '').trim();
+    else if(mt.kind === '말투') tone = tone.concat(pairs(mt.body)); else gl = gl.concat(pairs(mt.body));
+  } };
   for(const raw of String(text || '').split('\n')){
     const t = raw.trim(); let m;
     if(/^```/.test(t)){ cur = 0; continue; }   // 코드 울타리로 감싸 오는 경우
-    if((m = t.match(/^#\s*표기\s*[:：]?\s*(.*)$/))){ gl = gl.concat(pairs(m[1])); cur = 0; continue; }
-    if((m = t.match(/^#\s*말투\s*[:：]?\s*(.*)$/))){ tone = tone.concat(pairs(m[1])); cur = 0; continue; }
-    if((m = t.match(/^#\s*제목\s*[:：]?\s*(.*)$/))){ title = m[1].trim().replace(/^[〈《「『“"]+|[〉》」』”"]+$/g, '').trim(); cur = 0; continue; }
+    if(t[0] === '#'){ const c = cutMeta(t); if(!c.text) take(c.metas); cur = 0; continue; }   // '#'로 시작하는 줄은 문단에 잇지 않는다
     if((m = t.match(/^(?:\*\*)?[[【](\d{1,3})[\]】](?:\*\*)?\s*(.*)$/))){
       const n = +m[1];
-      if(n >= 1 && n <= k && !out.has(n)){ cur = n; last = n; out.set(n, m[2]); } else cur = 0;
+      if(n >= 1 && n <= k && !out.has(n)){ const c = cutMeta(m[2]); cur = c.metas.length ? 0 : n; last = n; out.set(n, c.text); take(c.metas); } else cur = 0;
       continue;
     }
-    if(cur && t) out.set(cur, out.get(cur) + ' ' + t);
+    if(cur && t){ const c = cutMeta(t); out.set(cur, out.get(cur) + ' ' + c.text); if(c.metas.length){ take(c.metas); cur = 0; } }
   }
   for(const [n, v] of out) out.set(n, v.replace(/\s+/g, ' ').trim());
   return {out, gl, tone, title, last};
@@ -237,7 +259,8 @@ function parseOut(text, k){
 const glossKey = l => { const m = String(l).match(/^(.*?)\s*[=＝]/); return m && m[1].trim() ? m[1].trim().toLowerCase() : null; };
 function addGloss(gl, tone){
   const keys = new Set(bk.gloss.split('\n').map(glossKey).filter(Boolean)), add = [];
-  for(const [a, b] of gl){ if(!keys.has(a.toLowerCase())){ keys.add(a.toLowerCase()); add.push(a + ' = ' + b); } }
+  for(const [a, b] of gl){ if(a === b) continue;   // '무사시사=무사시사'처럼 원어 자리에 번역을 쓴 것은 쓸모없다
+    if(!keys.has(a.toLowerCase())){ keys.add(a.toLowerCase()); add.push(a + ' = ' + b); } }
   for(const [a, b] of tone){ const k = '말투: ' + a; if(!keys.has(k.toLowerCase())){ keys.add(k.toLowerCase()); add.push(k + ' = ' + b); } }
   if(!add.length) return;
   bk.gloss = (bk.gloss.trim() ? bk.gloss.trim() + '\n' : '') + add.join('\n'); bk.glossAt = Date.now();
@@ -736,12 +759,26 @@ function shell(name){
   reader.hidden = false; scroller.scrollTop = 0; scroller.scrollLeft = 0; scroller.focus({preventScroll: true});
   if(narrow()) $('#app').classList.remove('drawer');
 }
+/* v86까지는 문단 끝에 붙어 온 '#표기 …'가 번역문에 남았다. 떼어 내고 표기는 표기표로(작가가 고친 문단은 그대로) */
+function cleanTr(){
+  let gl = [], tone = [], n = 0;
+  for(const i of Object.keys(bk.tr)){
+    const v = bk.tr[i]; if(typeof v !== 'string' || bk.ed[i] || v.indexOf('#') < 0) continue;
+    const c = cutMeta(v); if(!c.metas.length) continue;
+    for(const mt of c.metas){ if(mt.kind === '말투') tone = tone.concat(pairs(mt.body)); else if(mt.kind === '표기') gl = gl.concat(pairs(mt.body)); }
+    if(c.text) bk.tr[i] = c.text; else delete bk.tr[i];
+    touch(i); n++;
+  }
+  if(n) addGloss(gl, tone);
+  return n;
+}
 /* 다른 기기가 같은 책에 더한 번역을 지금 화면의 기록에 합친다(library.js가 부른다) */
 function mergeOpen(remote){
   if(!bk || !remote || remote.id !== bk.id) return false;
   flushEdits();
   const m = L.mergeTr(bk, remote);
   for(const k of ['tr', 'ed', 'fail', 'ts', 'gloss', 'glossAt', 'trTitle']) bk[k] = m[k];
+  cleanTr();
   const act = document.activeElement;
   for(const [i, sec] of els) if(!(view.edit && act && sec.contains(act))) paint(i);
   if(!$('#trDlg').hidden && act !== $('#trGl')) $('#trGl').value = bk.gloss;
@@ -753,6 +790,7 @@ function start(rec, pos, src){
   bk = rec;
   for(const k of ['tr', 'ed', 'fail', 'tries', 'ts']) if(!bk[k] || typeof bk[k] !== 'object') bk[k] = {};
   bk.gloss = bk.gloss || ''; bk.trTitle = bk.trTitle || '';
+  cleanTr();
   const before = chaptersOf(bk.paras);
   if(src && src !== rec && src.paras.length === bk.paras.length) bk.paras.forEach((p, i) => {   // 같은 글이라 문단 순서도 같다
     const q = src.paras[i]; for(const k of ['k', 'kt', 'h']){ if(q[k]) p[k] = q[k]; else delete p[k]; }
@@ -844,5 +882,5 @@ window.addEventListener('keydown', e => {
 }, true);
 window.addEventListener('pagehide', () => { if(bk){ flushEdits(); savePos(); } });
 
-window.__tr = {openFile, openSaved, close, _: {toMarkup, fromMarkup, domToMarkup, txtBook, chaptersOf, parseOut, buildPrompt: j => buildPrompt(j), chunkOf: (c, l) => chunkOf(c, l), state: () => ({bk, view, tq}), posNow}};
+window.__tr = {openFile, openSaved, close, _: {toMarkup, fromMarkup, domToMarkup, txtBook, chaptersOf, parseOut, cutMeta, buildPrompt: j => buildPrompt(j), chunkOf: (c, l) => chunkOf(c, l), state: () => ({bk, view, tq}), posNow}};
 })();
